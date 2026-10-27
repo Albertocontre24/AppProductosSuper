@@ -249,11 +249,16 @@ $('f-stars').onclick = e => {
   const b = e.target.closest('button'); if (!b) return;
   const n = Number(b.dataset.n); setRating(n === rating ? 0 : n);
 };
-$('f-photo').onchange = async e => {
+const onPhoto = async e => {
   const f = e.target.files[0]; if (!f) return;
-  photoData = await resize(f);
+  try { photoData = await resize(f); } catch { alert('No se pudo leer esa foto. Prueba con otra.'); return; }
   $('f-preview').src = photoData; $('f-preview').hidden = false; $('f-photo-hint').hidden = true;
+  e.target.value = '';
 };
+$('f-photo').onchange = onPhoto;
+$('f-cam').onchange = onPhoto;
+$('f-btn-cam').onclick = () => $('f-cam').click();
+$('f-btn-gal').onclick = () => $('f-photo').click();
 $('form').onsubmit = async e => {
   e.preventDefault();
   const num = v => v === '' ? null : Number(v);
