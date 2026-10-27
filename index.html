@@ -9,18 +9,27 @@
 <link rel="icon" href="icon.svg">
 <link rel="apple-touch-icon" href="icon.svg">
 <link rel="preload" href="fonts/BarlowCondensed-800.woff2" as="font" type="font/woff2" crossorigin>
-<link rel="stylesheet" href="style.css?v=7">
+<link rel="stylesheet" href="style.css?v=8">
 </head>
 <body>
 <header>
   <div class="top"><span class="brand">Mi súper</span><button id="account" class="ghost small" hidden></button></div>
   <h1 id="title">Mis productos</h1>
   <p id="count" class="count"></p>
+  <div class="seg" role="group" aria-label="Lista"><button data-v="tried">Me gustaron</button><button data-v="want">Quiero probar</button></div>
   <nav id="chips" class="tabs" aria-label="Supermercados"></nav>
 </header>
 
 <main id="grid" class="grid"></main>
 <p id="empty" class="empty" hidden></p>
+
+<section id="sug" class="sug-sec" hidden>
+  <h2>Parecidos a lo que te gusta</h2>
+  <p id="sug-msg" class="muted"></p>
+  <div id="sug-list" class="grid"></div>
+  <button id="sug-refresh" class="ghost" type="button" hidden>Buscar otras</button>
+  <p class="credit">Sugerencias con datos de Open Food Facts (licencia ODbL). Pueden estar incompletas.</p>
+</section>
 
 <button id="add" class="fab" aria-label="Añadir producto"><svg viewBox="0 0 24 24" width="30" height="30" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M12 4v16M4 12h16"/></svg></button>
 
@@ -44,6 +53,7 @@
     <div id="d-tag" class="tag big"><b id="d-price"></b><small id="d-unit"></small></div>
     <p id="d-stars" class="stars"></p>
     <div id="d-note" class="note"></div>
+    <button id="d-tried" type="button" class="wide" hidden>Ya lo probé</button>
     <div class="row">
       <button id="d-edit">Editar</button>
       <button id="d-del" class="danger">Borrar</button>
@@ -80,7 +90,7 @@
         </div>
       </label>
     </div>
-    <div class="rate">Valoración
+    <div id="f-rate" class="rate">Valoración
       <div id="f-stars" class="stars big" role="radiogroup"></div>
     </div>
     <label>Nota
@@ -94,6 +104,6 @@
 </dialog>
 
 <script src="firebase-config.js"></script>
-<script src="app.js?v=7"></script>
+<script src="app.js?v=8"></script>
 </body>
 </html>
