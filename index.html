@@ -9,7 +9,7 @@
 <link rel="icon" href="icon.svg">
 <link rel="apple-touch-icon" href="icon.svg">
 <link rel="preload" href="fonts/BarlowCondensed-800.woff2" as="font" type="font/woff2" crossorigin>
-<link rel="stylesheet" href="style.css?v=16">
+<link rel="stylesheet" href="style.css?v=17">
 </head>
 <body>
 <header>
@@ -50,6 +50,16 @@
 <div id="cmp-bar" class="cmp-bar" hidden><span id="cmp-n"></span><button id="cmp-cancel" class="ghost" type="button">Cancelar</button><button id="cmp-go" type="button" disabled>Comparar</button></div>
 
 <button id="add" class="fab" aria-label="Añadir producto"><svg viewBox="0 0 24 24" width="30" height="30" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M12 4v16M4 12h16"/></svg></button>
+
+<dialog id="price-dlg">
+  <form id="price-form" method="dialog">
+    <h2>Nuevo precio</h2>
+    <p id="pr-for" class="muted"></p>
+    <label>Precio (€)<input id="pr-price" type="number" step="0.01" min="0" inputmode="decimal" required></label>
+    <label><span id="pr-unit-lbl">Precio por kg (opcional)</span><input id="pr-unit" type="number" step="0.01" min="0" inputmode="decimal"></label>
+    <div class="row"><button type="submit">Guardar</button><button type="button" id="pr-cancel" class="ghost">Cancelar</button></div>
+  </form>
+</dialog>
 
 <dialog id="share-dlg">
   <div class="body">
@@ -102,6 +112,8 @@
     <div id="d-tag" class="tag big"><b id="d-price"></b><small id="d-unit"></small></div>
     <p id="d-stars" class="score big"></p>
     <div id="d-note" class="note"></div>
+    <div id="d-hist" class="hist" hidden></div>
+    <button id="d-newprice" type="button" class="ghost wide">Anotar nuevo precio</button>
     <button id="d-tried" type="button" class="wide" hidden>Ya lo probé</button>
     <div class="row">
       <button id="d-edit">Editar</button>
@@ -113,6 +125,7 @@
 <dialog id="form-dlg">
   <form id="form" method="dialog">
     <h2 id="f-title">Nuevo producto</h2>
+    <div id="f-status" class="fseg" role="group" aria-label="Qué es este producto"><button type="button" data-st="tried">Ya lo probé</button><button type="button" data-st="want">Quiero probarlo</button></div>
     <label class="photo" for="f-photo">
       <img id="f-preview" alt="" hidden>
       <span id="f-photo-hint">Añade una foto</span>
@@ -164,6 +177,6 @@
 </dialog>
 
 <script src="firebase-config.js"></script>
-<script src="app.js?v=16"></script>
+<script src="app.js?v=17"></script>
 </body>
 </html>

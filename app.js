@@ -243,6 +243,70 @@ function render() {
 }
 function esc(s) { return String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
 
+
+// --- historial de precios ---
+const histOf = i => i?.history?.length ? i.history
+  : i && i.price != null ? [{ d: i.created || Date.now(), p: i.price, u: i.unitPrice ?? null }] : [];
+const sameDay = (a, b) => new Date(a).toDateString() === new Date(b).toDateString();
+function historyWith(item, price, unitPrice) {
+  const h = histOf(item).map(x => ({ ...x }));
+  if (price == null) return h;
+  const last = h[h.length - 1], u = unitPrice ?? null;
+  if (last && last.p === price && (last.u ?? null) === u) return h;
+  const now = Date.now(), pt = { d: now, p: price, u };
+  if (last && sameDay(last.d, now)) h[h.length - 1] = pt; else h.push(pt);
+  return h;
+}
+const fmtDate = d => new Date(d).toLocaleDateString('es-ES', { day: 'numeric', month: 'short', year: 'numeric' });
+const fmtDelta = n => `${n > 0 ? '▲ +' : n < 0 ? '▼ −' : ''}${eur(Math.abs(n))}`;
+function renderHist(i) {
+  const h = histOf(i), box = $('d-hist');
+  box.hidden = h.length === 0;
+  if (!h.length) return;
+  const last = h[h.length - 1], prev = h[h.length - 2];
+  let sum = h.length === 1 ? `Precio anotado el ${fmtDate(last.d)}.` : '';
+  if (prev) {
+    const dlt = Math.round((last.p - prev.p) * 100) / 100;
+    sum = dlt === 0 ? `Sigue en ${eur(last.p)} desde el ${fmtDate(prev.d)}.`
+      : `${dlt > 0 ? 'Ha subido' : 'Ha bajado'} ${eur(Math.abs(dlt))} desde el ${fmtDate(prev.d)} (de ${eur(prev.p)} a ${eur(last.p)}).`;
+  }
+  const ps = h.map(x => x.p), min = Math.min(...ps), max = Math.max(...ps);
+  let chart = '';
+  if (h.length >= 2) {
+    const W = 300, H = 84, px = 14, py = 18, sx = k => px + (W - 2 * px) * k / (h.length - 1);
+    const sy = v => max === min ? H / 2 : H - py - (H - 2 * py) * (v - min) / (max - min);
+    const pts = h.map((x, k) => `${sx(k).toFixed(1)},${sy(x.p).toFixed(1)}`);
+    const lx = sx(h.length - 1), ly = sy(last.p);
+    chart = `<svg class="spark" viewBox="0 0 ${W} ${H}" role="img" aria-label="Evolución del precio">
+      <polyline points="${pts.join(' ')}" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
+      ${h.slice(0, -1).map((x, k) => `<circle cx="${sx(k).toFixed(1)}" cy="${sy(x.p).toFixed(1)}" r="3.5" fill="currentColor"/>`).join('')}
+      <circle cx="${lx.toFixed(1)}" cy="${ly.toFixed(1)}" r="6" fill="var(--tag)" stroke="currentColor" stroke-width="2.5"/>
+      <text x="${px}" y="${sy(h[0].p) - 8}" font-size="12" fill="currentColor" font-weight="700">${priceNum(h[0].p)}</text>
+      <text x="${lx}" y="${ly - 11}" font-size="12" fill="currentColor" font-weight="700" text-anchor="end">${priceNum(last.p)}</text>
+    </svg>`;
+  }
+  const rows = h.map((x, k) => ({ x, dl: k ? Math.round((x.p - h[k - 1].p) * 100) / 100 : null })).reverse().slice(0, 8);
+  box.innerHTML = `<h3>Historial de precios</h3><p class="hsum">${esc(sum)}</p>${chart}
+    ${h.length >= 2 ? `<p class="hmm">Más barato: ${eur(min)}. Más caro: ${eur(max)}.</p>` : ''}
+    <ul class="hlist">${rows.map(({ x, dl }) => `<li><span>${fmtDate(x.d)}</span><b>${eur(x.p)}</b>${dl == null ? '<em></em>' : `<em class="${dl > 0 ? 'up' : dl < 0 ? 'down' : ''}">${dl === 0 ? 'igual' : fmtDelta(dl)}</em>`}</li>`).join('')}</ul>`;
+}
+$('d-newprice').onclick = () => {
+  const i = editing; if (!i) return;
+  $('pr-for').textContent = i.name || i.brand || 'Producto';
+  $('pr-price').value = ''; $('pr-unit').value = '';
+  $('pr-unit-lbl').textContent = `Precio por ${i.unit === 'litro' ? 'litro' : 'kg'} (opcional)`;
+  $('price-dlg').showModal();
+};
+$('pr-cancel').onclick = () => $('price-dlg').close();
+$('price-form').onsubmit = async e => {
+  e.preventDefault();
+  const i = editing, price = Number($('pr-price').value);
+  const u = $('pr-unit').value === '' ? (i.unitPrice ?? null) : Number($('pr-unit').value);
+  const o = { ...i, price, unitPrice: u, history: historyWith(i, price, u) };
+  await save(o); items = await loadAll();
+  $('price-dlg').close(); render(); openDetail(o.id);
+};
+
 // --- detail ---
 function openDetail(id) {
   const i = items.find(x => x.id === id); if (!i) return;
@@ -256,20 +320,32 @@ function openDetail(id) {
   $('d-price').innerHTML = i.price == null ? '' : `${priceNum(i.price)}<em>€</em>`;
   $('d-unit').textContent = unitLine(i);
   $('d-note').textContent = i.note || '';
+  renderHist(i);
+  $('d-newprice').hidden = !!viewer;
   $('d-tried').hidden = !isWant(i) || !!viewer;
   $('d-edit').parentElement.hidden = !!viewer;
   $('detail').showModal();
 }
 
 // --- form ---
-function openForm(i, status) {
-  editing = i || null; photoData = i ? i.photo : null; formStatus = status || i?.status || 'tried';
-  const want = formStatus === 'want';
-  setScore(want || !i ? null : scoreOf(i));
-  $('f-title').textContent = want ? (i ? 'Editar pendiente' : 'Quiero probar') : (i && isWant(i) ? 'Ya lo probé' : i ? 'Editar producto' : 'Nuevo producto');
+const NO_STORE = 'Sin súper';
+function setFormStatus(st) {
+  formStatus = st;
+  const want = st === 'want';
+  $('f-title').textContent = want ? (editing && isWant(editing) ? 'Editar pendiente' : 'Quiero probar') : (editing && isWant(editing) ? 'Ya lo probé' : editing ? 'Editar producto' : 'Nuevo producto');
   $('f-rate').hidden = want;
   $('f-note').placeholder = want ? 'Por qué quieres probarlo, quién te lo recomendó…' : 'Muy salado, sabor fuerte, repetiría…';
-  $('f-store').value = i ? i.store : (filter !== 'Todos' ? filter : '');
+  $('f-store').required = !want;
+  $('f-store').placeholder = want ? 'Opcional si aún no sabes dónde' : 'Lidl, Mercadona…';
+  document.querySelectorAll('#f-status button').forEach(b => {
+    const on = b.dataset.st === st; b.classList.toggle('on', on); b.setAttribute('aria-pressed', on);
+  });
+}
+function openForm(i, status) {
+  editing = i || null; photoData = i ? i.photo : null;
+  setScore(i && !isWant(i) ? scoreOf(i) : null);
+  setFormStatus(status || i?.status || 'tried');
+  $('f-store').value = i ? (i.store === NO_STORE ? '' : i.store) : (filter !== 'Todos' && filter !== NO_STORE ? filter : '');
   $('f-brand').value = i?.brand || ''; $('f-name').value = i?.name || '';
   $('f-price').value = i?.price ?? ''; $('f-unitprice').value = i?.unitPrice ?? '';
   $('f-unit').value = i?.unit || 'kg'; $('f-note').value = i?.note || '';
@@ -278,6 +354,7 @@ function openForm(i, status) {
   $('f-photo-hint').hidden = !!shown;
   $('form-dlg').showModal();
 }
+$('f-status').onclick = e => { const b = e.target.closest('button'); if (b) setFormStatus(b.dataset.st); };
 function setScore(n) {
   score = n;
   $('sc-val').textContent = n == null ? '—' : fmtScore(n);
@@ -307,12 +384,13 @@ $('form').onsubmit = async e => {
   const o = {
     id: editing?.id || crypto.randomUUID(), created: editing?.created || Date.now(), status: formStatus,
     photo: photoData, photoUrl: editing?.photoUrl || null, cat: editing?.cat, tier: editing?.tier ?? null,
-    store: $('f-store').value.trim(), brand: $('f-brand').value.trim(),
+    store: $('f-store').value.trim() || NO_STORE, brand: $('f-brand').value.trim(),
     name: $('f-name').value.trim(), price: num($('f-price').value),
     unitPrice: num($('f-unitprice').value), unit: $('f-unit').value, note: $('f-note').value.trim(),
     score: want ? null : score,
   };
   if (o.cat === undefined) delete o.cat;
+  o.history = historyWith(editing, o.price, o.unitPrice);
   await save(o);
   items = await loadAll();
   filter = o.store; view = formStatus;
@@ -720,7 +798,7 @@ $('grid').onclick = e => {
   if (cmpSel.has(id)) cmpSel.delete(id); else if (cmpSel.size < 6) cmpSel.add(id);
   render();
 };
-for (const d of ['detail', 'form-dlg', 'cmp-dlg', 'share-dlg'])
+for (const d of ['detail', 'form-dlg', 'cmp-dlg', 'share-dlg', 'price-dlg'])
   $(d).addEventListener('click', e => { if (e.target === $(d)) $(d).close(); });
 
 document.fonts && document.fonts.ready.then(() => { segIdx = -1; tabPrev = null; placeSeg(); placeTabInk(); });
