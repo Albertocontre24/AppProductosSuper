@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#16a34a">
+<title>Mis Productos Súper</title>
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon.svg">
+<link rel="apple-touch-icon" href="icon.svg">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header>
+  <h1>🛒 Mis productos</h1>
+  <div id="chips" class="chips"></div>
+</header>
+
+<main id="grid" class="grid"></main>
+<p id="empty" class="empty" hidden></p>
+
+<button id="add" class="fab" aria-label="Añadir producto">＋</button>
+
+<dialog id="detail">
+  <img id="d-img" alt="">
+  <div class="body">
+    <h2 id="d-name"></h2>
+    <p id="d-meta" class="muted"></p>
+    <p id="d-price" class="price"></p>
+    <p id="d-unit" class="muted"></p>
+    <div id="d-note" class="note"></div>
+    <div class="row">
+      <button id="d-edit">Editar</button>
+      <button id="d-del" class="danger">Borrar</button>
+      <button id="d-close" class="ghost">Cerrar</button>
+    </div>
+  </div>
+</dialog>
+
+<dialog id="form-dlg">
+  <form id="form" method="dialog">
+    <h2 id="f-title">Nuevo producto</h2>
+    <label class="photo">
+      <img id="f-preview" alt="" hidden>
+      <span id="f-photo-hint">📷 Hacer foto</span>
+      <input id="f-photo" type="file" accept="image/*" capture="environment" hidden>
+    </label>
+    <label>Supermercado
+      <input id="f-store" list="stores" required placeholder="Lidl, Mercadona…" autocomplete="off">
+      <datalist id="stores"></datalist>
+    </label>
+    <label>Marca
+      <input id="f-brand" placeholder="Hacendado, Deluxe…" autocomplete="off">
+    </label>
+    <label>Producto
+      <input id="f-name" placeholder="Opcional" autocomplete="off">
+    </label>
+    <div class="row">
+      <label>Precio (€)
+        <input id="f-price" type="number" step="0.01" min="0" inputmode="decimal">
+      </label>
+      <label>Precio por (opcional)
+        <div class="row tight">
+          <input id="f-unitprice" type="number" step="0.01" min="0" inputmode="decimal" placeholder="€">
+          <select id="f-unit"><option>kg</option><option>litro</option></select>
+        </div>
+      </label>
+    </div>
+    <label>Nota
+      <textarea id="f-note" rows="3" placeholder="Muy salado, sabor fuerte, repetiría…"></textarea>
+    </label>
+    <div class="row">
+      <button id="f-save" type="submit">Guardar</button>
+      <button id="f-cancel" type="button" class="ghost">Cancelar</button>
+    </div>
+  </form>
+</dialog>
+
+<script src="app.js"></script>
+</body>
+</html>
