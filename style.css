@@ -276,3 +276,12 @@ button.sdel{flex:none;width:28px;height:34px;padding:0!important;background:none
 .trip-h b{font:800 1.3rem var(--disp)}.trip-h span{font:800 1.3rem var(--disp)}
 .trip p{margin:4px 0}.trip-i{font-size:.9rem}
 .trip .row{margin-top:10px}
+
+.shop-opts{display:flex;gap:8px;margin-top:10px;align-items:stretch}
+.shop-store{flex:0 0 46%;display:flex;align-items:center;gap:8px;margin:0!important;padding:0 0 0 14px;border-radius:12px;background:var(--surface);box-shadow:inset 0 0 0 1px var(--line);font:600 1.05rem var(--disp)!important;color:var(--mute)!important}
+.shop-store select{margin:0;border:0;background:transparent;padding:12px 4px;font:500 1rem var(--body);min-width:0;text-overflow:ellipsis}
+.shop-store select:disabled{opacity:1;color:var(--ink)}
+.shop-opts #shop-pick{flex:1;padding:12px 8px!important}
+.shop-hint{font-size:.85rem;margin:8px 0 0}
+.sname{cursor:pointer}
+.shop-opts #shop-pick{margin-top:0}
