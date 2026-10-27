@@ -19,13 +19,14 @@
 <main id="grid" class="grid"></main>
 <p id="empty" class="empty" hidden></p>
 
-<button id="add" class="fab" aria-label="Añadir producto">＋</button>
+<button id="add" class="fab" aria-label="Añadir producto"></button>
 
 <dialog id="detail">
   <img id="d-img" alt="">
   <div class="body">
     <h2 id="d-name"></h2>
     <p id="d-meta" class="muted"></p>
+    <p id="d-stars" class="stars"></p>
     <p id="d-price" class="price"></p>
     <p id="d-unit" class="muted"></p>
     <div id="d-note" class="note"></div>
@@ -65,6 +66,9 @@
           <select id="f-unit"><option>kg</option><option>litro</option></select>
         </div>
       </label>
+    </div>
+    <div class="rate">Valoración
+      <div id="f-stars" class="stars big" role="radiogroup"></div>
     </div>
     <label>Nota
       <textarea id="f-note" rows="3" placeholder="Muy salado, sabor fuerte, repetiría…"></textarea>
