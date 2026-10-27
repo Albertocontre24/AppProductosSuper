@@ -1,7 +1,7 @@
 'use strict';
 const $ = id => document.getElementById(id);
 const DEFAULT_STORES = ['Lidl', 'Mercadona', 'Carrefour', 'Dia', 'Aldi', 'Alcampo'];
-let items = [], filter = 'Todos', editing = null, photoData = null, rating = 0, view = 'tried', formStatus = 'tried', selTier = null, cmpOn = false, cmpSel = new Set(), cmpQ = '', cmpSort = 'none';
+let items = [], filter = 'Todos', editing = null, photoData = null, score = null, view = 'tried', formStatus = 'tried', selTier = null, cmpOn = false, cmpSel = new Set(), cmpQ = '', cmpSort = 'none';
 
 // --- IndexedDB ---
 const dbp = new Promise((res, rej) => {
@@ -104,7 +104,10 @@ $('account').onclick = async () => {
 
 // --- helpers ---
 const eur = n => (n || n === 0) && n !== '' ? Number(n).toFixed(2).replace('.', ',') + ' €' : '';
-const stars = n => n ? '★'.repeat(n) + `<span class="off">${'★'.repeat(5 - n)}</span>` : '';
+// puntuación 0-10 con saltos de 0,5. Los productos antiguos tenían 1-5 estrellas: valen el doble.
+const scoreOf = i => i.score != null ? i.score : i.rating ? i.rating * 2 : null;
+const fmtScore = n => (n % 1 ? n.toFixed(1) : String(n)).replace('.', ',');
+const scoreHtml = n => n == null ? '' : `★ <b>${fmtScore(n)}</b><small>/10</small>`;
 const stores = () => [...new Set([...DEFAULT_STORES, ...items.map(i => i.store)])];
 
 function resize(file, max = 800) {
@@ -191,7 +194,7 @@ function render() {
         ${i.price != null ? `<span class="tag"><b>${priceNum(i.price)}<em>€</em></b>${unitLine(i) ? `<small>${unitLine(i)}</small>` : ''}</span>` : ''}</span>
       <span class="nm">${esc(i.name || i.brand || 'Producto')}</span>
       ${sub2 ? `<span class="br">${esc(sub2)}</span>` : ''}
-      ${i.rating ? `<span class="stars" aria-label="${i.rating} de 5">${stars(i.rating)}</span>` : ''}
+      ${scoreOf(i) != null ? `<span class="score" aria-label="Puntuación ${fmtScore(scoreOf(i))} de 10">${scoreHtml(scoreOf(i))}</span>` : ''}
     </button>`;
   }).join('');
   if (tierView) $('grid').innerHTML = '';
@@ -228,7 +231,8 @@ function openDetail(id) {
   $('d-img').src = imgOf(i);
   $('d-name').textContent = i.name || i.brand || 'Producto';
   $('d-meta').textContent = i.name && i.brand ? `${i.brand} en ${i.store}` : `En ${i.store}`;
-  $('d-stars').innerHTML = stars(i.rating);
+  $('d-stars').innerHTML = scoreHtml(scoreOf(i));
+  $('d-stars').hidden = scoreOf(i) == null;
   $('d-tag').hidden = i.price == null;
   $('d-price').innerHTML = i.price == null ? '' : `${priceNum(i.price)}<em>€</em>`;
   $('d-unit').textContent = unitLine(i);
@@ -241,7 +245,7 @@ function openDetail(id) {
 function openForm(i, status) {
   editing = i || null; photoData = i ? i.photo : null; formStatus = status || i?.status || 'tried';
   const want = formStatus === 'want';
-  setRating(want ? 0 : i?.rating || 0);
+  setScore(want || !i ? null : scoreOf(i));
   $('f-title').textContent = want ? (i ? 'Editar pendiente' : 'Quiero probar') : (i && isWant(i) ? 'Ya lo probé' : i ? 'Editar producto' : 'Nuevo producto');
   $('f-rate').hidden = want;
   $('f-note').placeholder = want ? 'Por qué quieres probarlo, quién te lo recomendó…' : 'Muy salado, sabor fuerte, repetiría…';
@@ -254,15 +258,18 @@ function openForm(i, status) {
   $('f-photo-hint').hidden = !!shown;
   $('form-dlg').showModal();
 }
-function setRating(n) {
-  rating = n;
-  $('f-stars').innerHTML = [1, 2, 3, 4, 5].map(k =>
-    `<button type="button" data-n="${k}" class="${k <= n ? 'on' : ''}" aria-label="${k} estrellas">★</button>`).join('');
+function setScore(n) {
+  score = n;
+  $('sc-val').textContent = n == null ? '—' : fmtScore(n);
+  $('sc-range').value = n == null ? 5 : n;
+  $('sc-range').classList.toggle('unset', n == null);
+  $('sc-clear').hidden = n == null;
 }
-$('f-stars').onclick = e => {
-  const b = e.target.closest('button'); if (!b) return;
-  const n = Number(b.dataset.n); setRating(n === rating ? 0 : n);
-};
+const stepScore = d => setScore(Math.min(10, Math.max(0, (score ?? 5 - d) + d)));
+$('sc-minus').onclick = () => stepScore(-0.5);
+$('sc-plus').onclick = () => stepScore(0.5);
+$('sc-range').oninput = e => setScore(Number(e.target.value));
+$('sc-clear').onclick = () => setScore(null);
 const onPhoto = async e => {
   const f = e.target.files[0]; if (!f) return;
   try { photoData = await resize(f); } catch { alert('No se pudo leer esa foto. Prueba con otra.'); return; }
@@ -283,7 +290,7 @@ $('form').onsubmit = async e => {
     store: $('f-store').value.trim(), brand: $('f-brand').value.trim(),
     name: $('f-name').value.trim(), price: num($('f-price').value),
     unitPrice: num($('f-unitprice').value), unit: $('f-unit').value, note: $('f-note').value.trim(),
-    rating: want ? 0 : rating,
+    score: want ? null : score,
   };
   if (o.cat === undefined) delete o.cat;
   await save(o);
@@ -333,8 +340,8 @@ function knownNames() {
   return k;
 }
 async function loadSuggestions(force) {
-  const liked = items.filter(i => !isWant(i) && i.rating >= 4)
-    .sort((a, b) => b.rating - a.rating || b.created - a.created);
+  const liked = items.filter(i => !isWant(i) && scoreOf(i) >= 8)
+    .sort((a, b) => scoreOf(b) - scoreOf(a) || b.created - a.created);
   if (!liked.length) { sugState = { status: 'empty', list: [], key: '' }; return paintSug(); }
   const key = liked.map(i => i.id).join(',') + '|' + filter;
   if (!force && sugState.key === key && sugState.status !== 'error') return paintSug();
@@ -399,7 +406,7 @@ $('sug-list').onclick = async e => {
   const store = filter !== 'Todos' ? filter : known || (s.store ? s.store[0].toUpperCase() + s.store.slice(1) : 'Sin súper');
   b.disabled = true;
   await save({ id: crypto.randomUUID(), created: Date.now(), status: 'want', photo: null, photoUrl: s.img,
-    store, brand: s.brand, name: s.name, price: null, unitPrice: null, unit: 'kg', rating: 0,
+    store, brand: s.brand, name: s.name, price: null, unitPrice: null, unit: 'kg', score: null,
     note: `Parecido a ${s.from}` });
   items = await loadAll(); render();
 };
@@ -498,7 +505,7 @@ function bestSets(ps) {
   };
   pick(ps.filter(p => p.price != null), 'price', -1, out.price);
   for (const u of ['kg', 'litro']) pick(ps.filter(p => p.unitPrice != null && p.unit === u), 'unitPrice', -1, out.unit);
-  pick(ps.filter(p => p.rating > 0), 'rating', 1, out.rating);
+  pick(ps.filter(p => scoreOf(p) != null).map(p => ({ id: p.id, s: scoreOf(p) })), 's', 1, out.rating);
   return out;
 }
 function compareList() {
@@ -506,7 +513,7 @@ function compareList() {
   const nul = (v, dir) => v == null ? Infinity : dir * v;
   if (cmpSort === 'price') ps.sort((a, b) => nul(a.price, 1) - nul(b.price, 1));
   if (cmpSort === 'unit') ps.sort((a, b) => nul(a.unitPrice, 1) - nul(b.unitPrice, 1));
-  if (cmpSort === 'rating') ps.sort((a, b) => (b.rating || 0) - (a.rating || 0));
+  if (cmpSort === 'rating') ps.sort((a, b) => (scoreOf(b) ?? -1) - (scoreOf(a) ?? -1));
   return ps;
 }
 function renderCompare() {
@@ -528,7 +535,7 @@ function renderCompare() {
     row('Marca', p => p.brand ? esc(p.brand) : '<span class="muted">—</span>') +
     row('Precio', p => val(p.price != null ? eur(p.price) : '', best.price.has(p.id))) +
     row('Por kg o litro', p => val(p.unitPrice != null ? `${eur(p.unitPrice)}/${p.unit === 'litro' ? 'l' : p.unit}` : '', best.unit.has(p.id))) +
-    row('Mi puntuación', p => p.rating ? `<span class="stars ${best.rating.has(p.id) ? 'bestr' : ''}" aria-label="${p.rating} de 5">${stars(p.rating)}</span>` : '<span class="muted">—</span>') +
+    row('Mi puntuación', p => scoreOf(p) != null ? `<span class="score big ${best.rating.has(p.id) ? 'bestr' : ''}" aria-label="Puntuación ${fmtScore(scoreOf(p))} de 10">${scoreHtml(scoreOf(p))}</span>` : '<span class="muted">—</span>') +
     row('Mi nota', p => p.note ? `<span class="cnote">${esc(p.note)}</span>` : '<span class="muted">—</span>');
 }
 $('cmp-start').onclick = () => { cmpOn = true; cmpSel.clear(); cmpQ = ''; $('cmp-q').value = ''; filter = 'Todos'; render(); };
