@@ -9,17 +9,25 @@
 <link rel="icon" href="icon.svg">
 <link rel="apple-touch-icon" href="icon.svg">
 <link rel="preload" href="fonts/BarlowCondensed-800.woff2" as="font" type="font/woff2" crossorigin>
-<link rel="stylesheet" href="style.css?v=15">
+<link rel="stylesheet" href="style.css?v=16">
 </head>
 <body>
 <header>
-  <div class="top"><span class="brand">Mi súper</span><button id="account" class="ghost small" hidden></button></div>
+  <div class="top"><span id="brand" class="brand">Mi súper</span><button id="account" class="ghost small" hidden></button></div>
   <h1 id="title">Mis productos</h1>
-  <div class="meta"><p id="count" class="count"></p><div class="meta-btns"><button id="map-btn" class="ghost small" type="button" hidden>📍 Cerca de mí</button><button id="cmp-start" class="ghost small" type="button" hidden>Comparar</button></div></div>
+  <div class="meta"><p id="count" class="count"></p></div>
   <div class="seg" role="group" aria-label="Lista"><span id="seg-thumb" class="seg-thumb" aria-hidden="true"></span><button data-v="tried">Me gustaron</button><button data-v="want">Quiero probar</button><button data-v="tier">Tierlist</button></div>
   <input id="cmp-q" class="cmp-q" type="search" placeholder="Buscar: pizza, yogur, marca…" hidden>
   <nav id="chips" class="tabs" aria-label="Supermercados"></nav>
 </header>
+
+<div id="viewer-bar" class="viewer-bar" hidden><span id="viewer-note"></span><button id="viewer-own" type="button" class="act">Crear mi lista</button></div>
+
+<div class="actions" id="actions">
+  <button id="map-btn" class="act" type="button" hidden><span class="ico" aria-hidden="true"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s-6-5.3-6-10a6 6 0 1 1 12 0c0 4.7-6 10-6 10z"/><circle cx="12" cy="11" r="2"/></svg></span><span class="lbl">Cerca de mí</span></button>
+  <button id="cmp-start" class="act primary" type="button" hidden><span class="ico" aria-hidden="true"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M7 7h12l-3-3M17 17H5l3 3"/></svg></span><span class="lbl">Comparar</span></button>
+  <button id="share-btn" class="act" type="button" hidden><span class="ico" aria-hidden="true"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15V3M7.5 7.5 12 3l4.5 4.5M5 13v6a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-6"/></svg></span><span class="lbl">Compartir</span></button>
+</div>
 
 <main id="grid" class="grid"></main>
 <p id="empty" class="empty" hidden></p>
@@ -42,6 +50,28 @@
 <div id="cmp-bar" class="cmp-bar" hidden><span id="cmp-n"></span><button id="cmp-cancel" class="ghost" type="button">Cancelar</button><button id="cmp-go" type="button" disabled>Comparar</button></div>
 
 <button id="add" class="fab" aria-label="Añadir producto"><svg viewBox="0 0 24 24" width="30" height="30" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M12 4v16M4 12h16"/></svg></button>
+
+<dialog id="share-dlg">
+  <div class="body">
+    <div class="cmp-head"><h2>Compartir</h2><button id="sh-close" class="x2" type="button" aria-label="Cerrar">✕</button></div>
+    <p class="muted">Crea un enlace de solo lectura. Tus amigos lo abren sin cuenta y ven tu lista. Cuando cambies algo, se actualiza solo.</p>
+    <p id="sh-need" class="note" hidden></p>
+    <div id="sh-form">
+      <label class="f">Tu nombre para tus amigos<input id="sh-name" maxlength="30" autocomplete="off"></label>
+      <label class="chkrow"><input type="checkbox" checked disabled> Mis productos y mi tierlist</label>
+      <label class="chkrow"><input type="checkbox" id="sh-want"> Lo que quiero probar</label>
+      <label class="chkrow"><input type="checkbox" id="sh-notes" checked> Mis notas</label>
+      <p id="sh-err" class="err"></p>
+      <button id="sh-go" type="button" class="wide">Crear enlace</button>
+      <div id="sh-live" hidden>
+        <label class="f">Tu enlace<input id="sh-link" readonly></label>
+        <p id="sh-opens" class="muted"></p>
+        <div class="row"><button id="sh-copy" type="button">Copiar enlace</button><button id="sh-send" type="button" class="ghost">Enviar…</button></div>
+        <button id="sh-stop" type="button" class="danger wide">Dejar de compartir</button>
+      </div>
+    </div>
+  </div>
+</dialog>
 
 <dialog id="cmp-dlg">
   <div class="body">
@@ -134,6 +164,6 @@
 </dialog>
 
 <script src="firebase-config.js"></script>
-<script src="app.js?v=15"></script>
+<script src="app.js?v=16"></script>
 </body>
 </html>

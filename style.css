@@ -169,3 +169,23 @@ button.step:active{transform:scale(.92)}
 #sc-range{accent-color:var(--ink);padding:0;border:0;background:none;margin:4px 0 0;height:32px}
 #sc-range.unset{opacity:.45}
 #sc-clear{display:block;margin:0 auto}
+
+/* fila de acciones */
+.actions{display:flex;gap:12px;overflow-x:auto;padding:16px 16px 6px;max-width:960px;margin:0 auto;scrollbar-width:none}
+.actions::-webkit-scrollbar{display:none}
+.actions:not(:has(> :not([hidden]))){display:none}
+button.act{flex:none;display:inline-flex!important;align-items:center;gap:9px;height:48px;padding:0 20px 0 9px!important;border-radius:16px!important;background:var(--surface)!important;color:var(--ink)!important;font:600 1.15rem/1 var(--disp)!important;box-shadow:inset 0 0 0 1.5px var(--ink),0 3px 0 var(--ink)!important;transition:transform .18s cubic-bezier(.3,1.6,.5,1),box-shadow .18s;touch-action:manipulation}
+button.act:active{transform:translateY(3px);box-shadow:inset 0 0 0 1.5px var(--ink),0 0 0 var(--ink)!important}
+button.act.primary{background:var(--ink)!important;color:var(--bg)!important;box-shadow:inset 0 0 0 1.5px var(--ink),0 3px 0 var(--line)!important}
+button.act.primary:active{box-shadow:inset 0 0 0 1.5px var(--ink)!important}
+button.act:disabled{opacity:.85}
+.act .ico{width:32px;height:32px;border-radius:50%;display:grid;place-items:center;background:var(--tag);color:var(--tag-ink);flex:none}
+.act.busy .ico svg{animation:hop .55s ease-in-out infinite}
+@keyframes hop{50%{transform:translateY(-4px)}}
+.viewer-bar{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:14px 16px 0;padding:12px 14px;background:var(--surface);border-left:4px solid var(--tag);border-radius:0 12px 12px 0;max-width:928px;font-size:.95rem}
+@media(min-width:960px){.viewer-bar{margin-left:auto;margin-right:auto}}
+.viewer-bar button.act{height:40px;padding:0 14px!important;font-size:1rem!important}
+body.viewer .seg{max-width:300px}
+.chkrow{display:flex!important;align-items:center;gap:12px;margin:10px 0!important;font-size:1rem!important;color:var(--ink)!important}
+.chkrow input{display:inline-block;width:22px;height:22px;margin:0;padding:0;accent-color:var(--ink);flex:none}
+#sh-link{font-size:.9rem}

@@ -1,7 +1,7 @@
 'use strict';
 const $ = id => document.getElementById(id);
 const DEFAULT_STORES = ['Lidl', 'Mercadona', 'Carrefour', 'Dia', 'Aldi', 'Alcampo'];
-let items = [], filter = 'Todos', editing = null, photoData = null, score = null, view = 'tried', formStatus = 'tried', selTier = null, cmpOn = false, cmpSel = new Set(), cmpQ = '', cmpSort = 'none';
+let items = [], filter = 'Todos', editing = null, photoData = null, score = null, view = 'tried', formStatus = 'tried', selTier = null, cmpOn = false, cmpSel = new Set(), cmpQ = '', cmpSort = 'none', viewer = null, shareCfg = null;
 
 // --- IndexedDB ---
 const dbp = new Promise((res, rej) => {
@@ -27,8 +27,8 @@ let cloud = null; // { auth, db, user }
 const useCloud = () => !!(cloud && cloud.user);
 const col = () => cloud.db.collection('users').doc(cloud.user.uid).collection('products');
 const loadAll = async () => useCloud() ? (await col().get()).docs.map(d => d.data()) : localAll();
-const save = o => useCloud() ? col().doc(o.id).set(o) : localSave(o);
-const remove = id => useCloud() ? col().doc(id).delete() : localRemove(id);
+const save = async o => { if (useCloud()) { await col().doc(o.id).set(o); mirrorSet(o); } else await localSave(o); };
+const remove = async id => { if (useCloud()) { await col().doc(id).delete(); mirrorDel(id); } else await localRemove(id); };
 
 function loadScript(src) {
   return new Promise((res, rej) => {
@@ -47,20 +47,23 @@ const AUTH_ERR = {
 };
 const authMsg = e => AUTH_ERR[e.code] || e.message;
 
-async function initCloud() {
+async function fbInit(withAuth) {
   const cfg = window.FIREBASE_CONFIG;
-  if (!cfg) return false;
+  if (!cfg) throw new Error('nocfg');
+  for (const f of withAuth ? ['app', 'auth', 'firestore'] : ['app', 'firestore'])
+    await loadScript(`https://www.gstatic.com/firebasejs/10.12.2/firebase-${f}-compat.js`);
+  if (!firebase.apps.length) firebase.initializeApp(cfg);
+}
+async function initCloud() {
   try {
-    for (const f of ['app', 'auth', 'firestore'])
-      await loadScript(`https://www.gstatic.com/firebasejs/10.12.2/firebase-${f}-compat.js`);
-    firebase.initializeApp(cfg);
+    await fbInit(true);
     cloud = { auth: firebase.auth(), db: firebase.firestore(), user: null };
     cloud.db.enablePersistence({ synchronizeTabs: true }).catch(() => {});
     cloud.auth.onAuthStateChanged(async u => {
       cloud.user = u;
       updateAccount();
-      if (u) { $('auth-dlg').open && $('auth-dlg').close(); await migrateLocal(); }
-      else if (!sessionStorage.getItem('nocloud')) $('auth-dlg').showModal();
+      if (u) { $('auth-dlg').open && $('auth-dlg').close(); await migrateLocal(); await loadShareCfg(); }
+      else { shareCfg = null; if (!sessionStorage.getItem('nocloud')) $('auth-dlg').showModal(); }
       items = await loadAll(); render();
     });
     return true;
@@ -165,6 +168,19 @@ const unitLine = i => i.unitPrice ? `${eur(i.unitPrice)}/${i.unit === 'litro' ? 
 const priceNum = n => Number(n).toFixed(2).replace('.', ',');
 const isWant = i => i.status === 'want';
 const imgOf = i => i.photo || i.photoUrl || '';
+let lastHideWant = null;
+function renderViewerChrome() {
+  const v = !!viewer;
+  document.body.classList.toggle('viewer', v);
+  $('brand').textContent = viewer?.name ? `Lista de ${viewer.name}` : 'Mi súper';
+  $('account').hidden = v || !cloud;
+  $('viewer-bar').hidden = !v;
+  $('viewer-note').textContent = viewer?.error ? '' : viewer?.loading ? 'Cargando…' : `Estás viendo la lista de ${viewer?.name || 'un amigo'}. Es solo de lectura.`;
+  const hideWant = v && !viewer.wants;
+  if (hideWant !== lastHideWant) { lastHideWant = hideWant; segIdx = -1; }
+  document.querySelector('.seg button[data-v="want"]').hidden = hideWant;
+  if (hideWant && view === 'want') view = 'tried';
+}
 function render() {
   const used = [...new Set(items.map(i => i.store).filter(Boolean))].sort();
   if (filter !== 'Todos' && !used.includes(filter)) filter = 'Todos';
@@ -176,6 +192,7 @@ function render() {
   });
   placeSeg();
   if (view !== 'tried') cmpOn = false;
+  renderViewerChrome();
   const want = view === 'want', tierView = view === 'tier';
   let list = items.filter(i => isWant(i) === want && (filter === 'Todos' || i.store === filter))
     .sort((a, b) => b.created - a.created);
@@ -199,7 +216,8 @@ function render() {
   }).join('');
   if (tierView) $('grid').innerHTML = '';
   $('empty').hidden = list.length > 0;
-  $('empty').textContent = tierView
+  if (viewer?.error) { $('empty').hidden = false; }
+  $('empty').textContent = viewer?.error ? 'Este enlace no está disponible o su dueño ya no comparte la lista.' : viewer?.loading ? 'Abriendo la lista…' : tierView
     ? 'Primero guarda productos en Me gustaron. Luego los ordenas aquí.'
     : want
     ? 'Aquí apuntas lo que quieres probar. Pulsa + y hazle una foto cuando lo veas en el súper.'
@@ -207,11 +225,12 @@ function render() {
       ? `Todavía no hay nada en ${filter}. Pulsa + y hazle una foto al primero.`
       : 'Aún no hay productos. Pulsa + y hazle una foto al primero que te guste.';
   $('stores').innerHTML = stores().map(s => `<option value="${esc(s)}">`).join('');
-  $('sug').hidden = !want;
+  $('sug').hidden = !want || !!viewer;
   const nTried = items.filter(i => !isWant(i)).length;
-  $('cmp-start').hidden = !(view === 'tried' && !cmpOn && nTried >= 2);
-  $('map-btn').hidden = filter === 'Todos' || cmpOn;
-  $('cmp-q').hidden = !cmpOn; $('cmp-bar').hidden = !cmpOn; $('add').hidden = cmpOn;
+  $('cmp-start').hidden = !(view === 'tried' && !cmpOn && nTried >= 2 && !viewer?.error);
+  $('share-btn').hidden = !!viewer || cmpOn;
+  $('map-btn').hidden = filter === 'Todos' || cmpOn || !!viewer?.error;
+  $('cmp-q').hidden = !cmpOn; $('cmp-bar').hidden = !cmpOn; $('add').hidden = cmpOn || !!viewer;
   if (cmpOn) {
     $('count').textContent = 'Elige de 2 a 6 productos para compararlos';
     const n = [...cmpSel].filter(id => items.some(i => i.id === id)).length;
@@ -220,7 +239,7 @@ function render() {
   }
   $('tiers').hidden = !tierView;
   if (tierView) renderTiers(list);
-  if (want) loadSuggestions(false);
+  if (want && !viewer) loadSuggestions(false);
 }
 function esc(s) { return String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
 
@@ -237,7 +256,8 @@ function openDetail(id) {
   $('d-price').innerHTML = i.price == null ? '' : `${priceNum(i.price)}<em>€</em>`;
   $('d-unit').textContent = unitLine(i);
   $('d-note').textContent = i.note || '';
-  $('d-tried').hidden = !isWant(i);
+  $('d-tried').hidden = !isWant(i) || !!viewer;
+  $('d-edit').parentElement.hidden = !!viewer;
   $('detail').showModal();
 }
 
@@ -419,21 +439,23 @@ function renderTiers(list) {
   if (selTier && !list.some(i => i.id === selTier)) selTier = null;
   const chip = i => {
     const img = imgOf(i), n = i.name || i.brand || 'Producto';
-    return `<button class="tchip ${i.id === selTier ? 'sel' : ''}" data-id="${i.id}" draggable="true" title="${esc(n)}" aria-label="${esc(n)}" aria-pressed="${i.id === selTier}">${img ? `<img src="${esc(img)}" alt="" draggable="false">` : `<span>${esc(initials(i))}</span>`}</button>`;
+    return `<button class="tchip ${i.id === selTier ? 'sel' : ''}" data-id="${i.id}" draggable="${!viewer}" title="${esc(n)}" aria-label="${esc(n)}" aria-pressed="${i.id === selTier}">${img ? `<img src="${esc(img)}" alt="" draggable="false">` : `<span>${esc(initials(i))}</span>`}</button>`;
   };
   const row = (t, color, label) => `<div class="trow" data-t="${t}"><div class="tlabel" style="background:${color}">${label}</div><div class="tcells">${list.filter(i => (i.tier || '') === t).map(chip).join('')}</div></div>`;
   $('tier-rows').innerHTML = TIERS.map(([t, c]) => row(t, c, t)).join('') + row('', 'var(--line)', '?');
   const sel = list.find(i => i.id === selTier);
-  $('tier-hint').textContent = sel ? `«${sel.name || sel.brand}»: toca la fila donde ponerlo.` : list.length ? 'Toca un producto y luego la fila donde ponerlo. La fila ? lo deja sin clasificar.' : '';
+  $('tier-hint').textContent = viewer ? `Así tiene ${viewer.name || 'tu amigo'} su tierlist.` : sel ? `«${sel.name || sel.brand}»: toca la fila donde ponerlo.` : list.length ? 'Toca un producto y luego la fila donde ponerlo. La fila ? lo deja sin clasificar.' : '';
   $('tier-save').hidden = !list.length;
 }
 async function placeTier(id, t) {
+  if (viewer) return;
   const it = items.find(x => x.id === id); if (!it) return;
   it.tier = t || null; selTier = null;
   render();
   try { await save(it); } catch {}
 }
 $('tiers').onclick = e => {
+  if (viewer) return;
   const c = e.target.closest('.tchip');
   if (c) { selTier = selTier === c.dataset.id ? null : c.dataset.id; return render(); }
   const r = e.target.closest('.trow');
@@ -554,17 +576,130 @@ $('map-btn').onclick = () => {
   const w = window.open('', '_blank');
   const go = url => { if (w) w.location.href = url; else location.href = url; };
   if (!navigator.geolocation) return go(plain);
-  const btn = $('map-btn'), txt = btn.textContent;
-  btn.disabled = true; btn.textContent = 'Localizando…';
+  const btn = $('map-btn'), lbl = btn.querySelector('.lbl'), txt = lbl.textContent;
+  const done = () => { btn.disabled = false; btn.classList.remove('busy'); lbl.textContent = txt; };
+  btn.disabled = true; btn.classList.add('busy'); lbl.textContent = 'Localizando…';
   navigator.geolocation.getCurrentPosition(
     pos => {
-      btn.disabled = false; btn.textContent = txt;
+      done();
       const { latitude: la, longitude: lo } = pos.coords;
       go(`${base}${encodeURIComponent(store + ' supermercado')}/@${la.toFixed(5)},${lo.toFixed(5)},15z`);
     },
-    () => { btn.disabled = false; btn.textContent = txt; go(plain); },
+    () => { done(); go(plain); },
     { timeout: 8000, maximumAge: 300000 });
 };
+
+// --- compartir con amigos ---
+const metaDoc = () => cloud.db.collection('users').doc(cloud.user.uid).collection('meta').doc('share');
+const shareRef = id => cloud.db.collection('shares').doc(id);
+const newId = () => [...crypto.getRandomValues(new Uint8Array(16))].map(b => b.toString(36).padStart(2, '0')).join('').slice(0, 22);
+async function loadShareCfg() {
+  try { const d = await metaDoc().get(); shareCfg = d.exists && d.data().on ? d.data() : null; } catch { shareCfg = null; }
+}
+function shareDoc(o, cfg = shareCfg) {
+  if (isWant(o) && !cfg.wants) return null;
+  const c = { ...o }; delete c.cat;
+  if (!cfg.notes) c.note = '';
+  return c;
+}
+async function mirrorSet(o) {
+  if (!shareCfg) return;
+  try {
+    const ref = shareRef(shareCfg.id).collection('products').doc(o.id), d = shareDoc(o);
+    if (d) await ref.set(d); else await ref.delete();
+  } catch {}
+}
+async function mirrorDel(id) {
+  if (!shareCfg) return;
+  try { await shareRef(shareCfg.id).collection('products').doc(id).delete(); } catch {}
+}
+async function syncShare(prefs) {
+  const id = shareCfg?.id || newId();
+  const cfg = { id, on: true, name: prefs.name, wants: prefs.wants, notes: prefs.notes };
+  await shareRef(id).set({ owner: cloud.user.uid, name: cfg.name, wants: cfg.wants, notes: cfg.notes, updated: Date.now() });
+  const pc = shareRef(id).collection('products');
+  const existing = (await pc.get()).docs.map(d => d.id);
+  const desired = new Map();
+  for (const o of items) { const d = shareDoc(o, cfg); if (d) desired.set(o.id, d); }
+  const ops = [...desired].map(([k, d]) => ['s', k, d]).concat(existing.filter(k => !desired.has(k)).map(k => ['d', k]));
+  for (let i = 0; i < ops.length; i += 20) {
+    const b = cloud.db.batch();
+    ops.slice(i, i + 20).forEach(([t, k, d]) => t === 's' ? b.set(pc.doc(k), d) : b.delete(pc.doc(k)));
+    await b.commit();
+  }
+  await metaDoc().set(cfg);
+  shareCfg = cfg;
+}
+async function stopShare() {
+  const id = shareCfg.id, pc = shareRef(id).collection('products');
+  const docs = (await pc.get()).docs;
+  for (let i = 0; i < docs.length; i += 20) {
+    const b = cloud.db.batch(); docs.slice(i, i + 20).forEach(d => b.delete(d.ref)); await b.commit();
+  }
+  await shareRef(id).delete();
+  await metaDoc().set({ on: false });
+  shareCfg = null;
+}
+const SECTION_NAME = { tried: 'Me gustaron', want: 'Quiero probar', tier: 'Tierlist' };
+const shareLink = () => `${location.origin}${location.pathname}?s=${shareCfg.id}&v=${view}`;
+function paintShare() {
+  const need = !cloud || !useCloud();
+  $('sh-need').hidden = !need; $('sh-form').hidden = need;
+  if (need) { $('sh-need').textContent = cloud ? 'Para compartir tu lista necesitas entrar con tu cuenta. Pulsa 👤 Entrar arriba.' : 'La nube no está activada en esta app, así que no se puede compartir.'; return; }
+  const on = !!shareCfg;
+  $('sh-name').value = shareCfg?.name || $('sh-name').value || (cloud.user.email || '').split('@')[0];
+  $('sh-want').checked = shareCfg ? shareCfg.wants : $('sh-want').checked;
+  $('sh-notes').checked = shareCfg ? shareCfg.notes : $('sh-notes').checked;
+  $('sh-go').textContent = on ? 'Guardar cambios' : 'Crear enlace';
+  $('sh-live').hidden = !on;
+  if (on) {
+    $('sh-link').value = shareLink();
+    $('sh-opens').textContent = `El enlace abre en «${SECTION_NAME[view]}».`;
+    $('sh-send').hidden = !navigator.share;
+  }
+  $('sh-err').textContent = '';
+}
+$('share-btn').onclick = () => { paintShare(); $('share-dlg').showModal(); };
+$('sh-close').onclick = () => $('share-dlg').close();
+$('sh-go').onclick = async () => {
+  const name = $('sh-name').value.trim();
+  if (!name) { $('sh-err').textContent = 'Escribe cómo quieres que te vean tus amigos.'; return; }
+  const b = $('sh-go'), txt = b.textContent; b.disabled = true; b.textContent = 'Guardando…';
+  try { await syncShare({ name, wants: $('sh-want').checked, notes: $('sh-notes').checked }); paintShare(); }
+  catch (e) { $('sh-err').textContent = /permission/i.test(e.message) ? 'Falta actualizar las reglas de Firestore (mira SETUP-NUBE.md).' : 'No se pudo compartir. Comprueba la conexión.'; }
+  b.disabled = false; b.textContent = shareCfg ? 'Guardar cambios' : txt;
+};
+$('sh-copy').onclick = async () => {
+  const url = $('sh-link').value;
+  try { await navigator.clipboard.writeText(url); }
+  catch { $('sh-link').select(); document.execCommand('copy'); }
+  $('sh-copy').textContent = '¡Copiado!'; setTimeout(() => { $('sh-copy').textContent = 'Copiar enlace'; }, 1600);
+};
+$('sh-send').onclick = () => navigator.share({ title: 'Mi lista del súper', text: `Mira mi lista de productos del súper, ${shareCfg.name}:`, url: $('sh-link').value }).catch(() => {});
+$('sh-stop').onclick = async () => {
+  if (!confirm('Tus amigos dejarán de ver tu lista y el enlace dejará de funcionar. ¿Dejar de compartir?')) return;
+  try { await stopShare(); paintShare(); $('share-dlg').close(); } catch { $('sh-err').textContent = 'No se pudo parar. Inténtalo de nuevo.'; }
+};
+
+// --- ver la lista de un amigo ---
+async function initViewer(id) {
+  viewer = { loading: true }; render();
+  const p = new URLSearchParams(location.search);
+  try {
+    await fbInit(false);
+    const db = firebase.firestore();
+    const meta = await db.collection('shares').doc(id).get();
+    if (!meta.exists) throw new Error('gone');
+    const m = meta.data();
+    items = (await db.collection('shares').doc(id).collection('products').get()).docs.map(d => d.data());
+    viewer = { id, name: m.name, wants: !!m.wants, notes: !!m.notes };
+    const v = p.get('v');
+    view = v === 'tier' || (v === 'want' && viewer.wants) ? v : 'tried';
+    segIdx = -1;
+  } catch { viewer = { error: true }; }
+  render();
+}
+$('viewer-own').onclick = () => { location.href = location.origin + location.pathname; };
 
 // --- events ---
 $('add').onclick = () => openForm(null, view === 'want' ? 'want' : 'tried');
@@ -585,9 +720,11 @@ $('grid').onclick = e => {
   if (cmpSel.has(id)) cmpSel.delete(id); else if (cmpSel.size < 6) cmpSel.add(id);
   render();
 };
-for (const d of ['detail', 'form-dlg', 'cmp-dlg'])
+for (const d of ['detail', 'form-dlg', 'cmp-dlg', 'share-dlg'])
   $(d).addEventListener('click', e => { if (e.target === $(d)) $(d).close(); });
 
 document.fonts && document.fonts.ready.then(() => { segIdx = -1; tabPrev = null; placeSeg(); placeTabInk(); });
-localAll().then(r => { items = r; render(); }).then(initCloud).then(ok => { if (!ok) $('account').hidden = true; });
+const shareParam = new URLSearchParams(location.search).get('s');
+if (shareParam) initViewer(shareParam);
+else localAll().then(r => { items = r; render(); }).then(initCloud).then(ok => { if (!ok) $('account').hidden = true; });
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
