@@ -941,7 +941,7 @@ $('viewer-own').onclick = () => { location.href = location.origin + location.pat
 
 document.addEventListener('click', e => { const b = e.target.closest('button.act'); if (b) setTimeout(() => b.blur(), 0); });
 // --- lista de la compra ---
-let shop = [], shopSaveT = null, pickAll = false;
+let shop = [], shopSaveT = null, pickAll = false, shopStoreSel = NO_STORE, shopEditing = null;
 const SHOP_LS = 'shop1', TRIPS_LS = 'trips1';
 const metaRef = name => cloud.db.collection('users').doc(cloud.user.uid).collection('meta').doc(name);
 function shopLoadLocal() { try { shop = JSON.parse(localStorage.getItem(SHOP_LS) || '[]'); } catch { shop = []; } }
@@ -954,15 +954,26 @@ async function loadShop() {
   } else shopLoadLocal();
 }
 function saveShop() {
+  try { localStorage.setItem(SHOP_LS, JSON.stringify(shop)); } catch {}
   clearTimeout(shopSaveT);
-  shopSaveT = setTimeout(async () => {
-    try { localStorage.setItem(SHOP_LS, JSON.stringify(shop)); } catch {}
-    if (useCloud()) { try { await metaRef('list').set({ items: shop, updated: Date.now() }); } catch {} }
-  }, 350);
+  shopSaveT = setTimeout(pushShop, 350);
 }
+async function pushShop() {
+  clearTimeout(shopSaveT); shopSaveT = null;
+  if (useCloud()) { try { await metaRef('list').set({ items: shop, updated: Date.now() }); } catch {} }
+}
+addEventListener('pagehide', () => { if (shopSaveT) pushShop(); });
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden' && shopSaveT) pushShop(); });
 const prodOf = it => it.pid ? items.find(p => p.id === it.pid) : null;
 const priceOf = it => { const p = prodOf(it); return p && p.price != null ? p.price : it.price ?? null; };
 const shopStore = it => it.store || NO_STORE;
+const knownStores = () => [...new Set([...DEFAULT_STORES, ...items.map(i => i.store), ...shop.map(i => i.store)].filter(Boolean))]
+  .filter(s => s !== NO_STORE).sort((x, y) => x.localeCompare(y, 'es'));
+function storeOpts(sel) {
+  const l = [NO_STORE, ...knownStores()];
+  if (sel && !l.includes(sel)) l.push(sel);
+  return l.map(s => `<option value="${esc(s)}" ${s === sel ? 'selected' : ''}>${esc(s)}</option>`).join('') + '<option value="__new">Otro súper…</option>';
+}
 function shopStats(list) {
   let total = 0, cart = 0, missing = 0, done = 0;
   for (const it of list) {
@@ -1012,14 +1023,24 @@ function renderShop() {
   $('shop-list').innerHTML = st.n ? shopRows(list) : `<p class="empty-s">${filter === 'Todos' ? 'La lista está vacía.' : `No hay nada para ${esc(filter)}.`} Escribe algo arriba o toca «Mis productos».</p>`;
   $('shop-finish').hidden = !st.done; $('shop-clear').hidden = !st.done;
   $('shop-text').hidden = !st.n;
+  const selStore = filter !== 'Todos' ? filter : shopStoreSel;
+  $('shop-store').innerHTML = storeOpts(selStore);
+  $('shop-store').disabled = filter !== 'Todos';
+  $('shop-store-l').title = filter !== 'Todos' ? 'Para elegir otro súper, vuelve a «Todos»' : '';
+  $('shop-hint').hidden = !st.n;
   $('shop-in').placeholder = filter === 'Todos' ? 'Añadir: leche, pan, papel de cocina…' : `Añadir en ${filter}: leche, pan…`;
 }
 $('shop-add').onclick = addFromInput;
+$('shop-store').onchange = e => {
+  let v = e.target.value;
+  if (v === '__new') { v = (prompt('¿Cómo se llama el súper?') || '').trim() || shopStoreSel; }
+  shopStoreSel = v; render();
+};
 $('shop-in').onkeydown = e => { if (e.key === 'Enter') { e.preventDefault(); addFromInput(); } };
 function addFromInput() {
   const parts = $('shop-in').value.split(',').map(s => s.trim()).filter(Boolean);
   if (!parts.length) return;
-  for (const name of parts) addShop({ name, store: filter !== 'Todos' ? filter : NO_STORE });
+  for (const name of parts) addShop({ name, store: filter !== 'Todos' ? filter : shopStoreSel });
   $('shop-in').value = ''; render(); $('shop-in').focus();
 }
 $('shop-list').onclick = e => {
@@ -1029,8 +1050,29 @@ $('shop-list').onclick = e => {
   else if (e.target.closest('.qm')) it.qty = Math.max(1, (it.qty || 1) - 1);
   else if (e.target.closest('.qp')) it.qty = Math.min(99, (it.qty || 1) + 1);
   else if (e.target.closest('.sdel')) shop = shop.filter(x => x !== it);
+  else if (e.target.closest('.sname')) return openShopEdit(it);
   else return;
   saveShop(); render();
+};
+// editar un artículo: cambiar el súper o el nombre
+function openShopEdit(it) {
+  shopEditing = it;
+  $('se-name').value = it.name;
+  $('se-store').innerHTML = storeOpts(shopStore(it));
+  $('se-new-l').hidden = true; $('se-new').value = '';
+  $('sedit-dlg').showModal();
+}
+$('se-store').onchange = e => { $('se-new-l').hidden = e.target.value !== '__new'; if (!$('se-new-l').hidden) $('se-new').focus(); };
+$('se-cancel').onclick = () => $('sedit-dlg').close();
+$('se-del').onclick = () => { shop = shop.filter(x => x !== shopEditing); saveShop(); $('sedit-dlg').close(); render(); };
+$('sedit-form').onsubmit = e => {
+  e.preventDefault();
+  const it = shopEditing; if (!it) return;
+  const v = $('se-store').value;
+  const store = v === '__new' ? ($('se-new').value.trim() || NO_STORE) : v;
+  it.name = $('se-name').value.trim() || it.name;
+  it.store = store;
+  saveShop(); $('sedit-dlg').close(); render();
 };
 // elegir de mis productos
 function paintPick() {
@@ -1153,7 +1195,7 @@ $('grid').onclick = e => {
   if (cmpSel.has(id)) cmpSel.delete(id); else if (tagMode || cmpSel.size < 6) cmpSel.add(id);
   render();
 };
-for (const d of ['detail', 'form-dlg', 'cmp-dlg', 'share-dlg', 'price-dlg', 'sort-dlg', 'tagset-dlg', 'pick-dlg', 'fin-dlg', 'hist-dlg'])
+for (const d of ['detail', 'form-dlg', 'cmp-dlg', 'share-dlg', 'price-dlg', 'sort-dlg', 'tagset-dlg', 'pick-dlg', 'fin-dlg', 'hist-dlg', 'sedit-dlg'])
   $(d).addEventListener('click', e => { if (e.target === $(d)) $(d).close(); });
 
 document.fonts && document.fonts.ready.then(() => { segIdx = -1; tabPrev = null; placeSeg(); placeTabInk(); });

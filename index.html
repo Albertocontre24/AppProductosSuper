@@ -9,7 +9,7 @@
 <link rel="icon" href="icon.svg">
 <link rel="apple-touch-icon" href="icon.svg">
 <link rel="preload" href="fonts/BarlowCondensed-800.woff2" as="font" type="font/woff2" crossorigin>
-<link rel="stylesheet" href="style.css?v=23">
+<link rel="stylesheet" href="style.css?v=24">
 </head>
 <body>
 <header>
@@ -41,9 +41,13 @@
     <input id="shop-in" type="text" enterkeyhint="done" autocomplete="off" placeholder="Añadir: leche, pan, papel de cocina…">
     <button id="shop-add" type="button">Añadir</button>
   </div>
-  <button id="shop-pick" type="button" class="ghost wide">Elegir de mis productos</button>
+  <div class="shop-opts">
+    <label id="shop-store-l" class="shop-store">En <select id="shop-store" aria-label="Súper donde añadir"></select></label>
+    <button id="shop-pick" type="button" class="ghost">Elegir de mis productos</button>
+  </div>
   <div id="shop-prog" class="prog" hidden><div class="bar"><i id="shop-bar"></i></div><span id="shop-prog-txt"></span></div>
   <div id="shop-total" class="shop-total" hidden></div>
+  <p id="shop-hint" class="muted shop-hint" hidden>Toca un artículo para cambiarle el súper o el nombre.</p>
   <div id="shop-list" class="shop-list"></div>
   <div class="shop-actions">
     <button id="shop-finish" type="button" hidden>Terminar compra</button>
@@ -70,6 +74,17 @@
 <div id="cmp-bar" class="cmp-bar" hidden><span id="cmp-n"></span><button id="cmp-cancel" class="ghost" type="button">Cancelar</button><button id="cmp-go" type="button" disabled>Comparar</button></div>
 
 <button id="add" class="fab" aria-label="Añadir producto"><svg viewBox="0 0 24 24" width="30" height="30" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M12 4v16M4 12h16"/></svg></button>
+
+<dialog id="sedit-dlg">
+  <form id="sedit-form" method="dialog">
+    <h2>Editar artículo</h2>
+    <label>Nombre<input id="se-name" required maxlength="60" autocomplete="off"></label>
+    <label>Súper<select id="se-store"></select></label>
+    <label id="se-new-l" hidden>Nombre del nuevo súper<input id="se-new" maxlength="30" autocomplete="off"></label>
+    <div class="row"><button type="submit">Guardar</button><button type="button" id="se-cancel" class="ghost">Cancelar</button></div>
+    <button type="button" id="se-del" class="danger wide">Quitar de la lista</button>
+  </form>
+</dialog>
 
 <dialog id="pick-dlg">
   <div class="body">
@@ -251,6 +266,6 @@
 </dialog>
 
 <script src="firebase-config.js"></script>
-<script src="app.js?v=24"></script>
+<script src="app.js?v=25"></script>
 </body>
 </html>
