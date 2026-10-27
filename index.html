@@ -9,14 +9,14 @@
 <link rel="icon" href="icon.svg">
 <link rel="apple-touch-icon" href="icon.svg">
 <link rel="preload" href="fonts/BarlowCondensed-800.woff2" as="font" type="font/woff2" crossorigin>
-<link rel="stylesheet" href="style.css?v=20">
+<link rel="stylesheet" href="style.css?v=23">
 </head>
 <body>
 <header>
   <div class="top"><span id="brand" class="brand">Mi súper</span><button id="account" class="ghost small" hidden></button></div>
   <h1 id="title">Mis productos</h1>
   <div class="meta"><p id="count" class="count"></p></div>
-  <div class="seg" role="group" aria-label="Lista"><span id="seg-thumb" class="seg-thumb" aria-hidden="true"></span><button data-v="tried">Me gustaron</button><button data-v="want">Quiero probar</button><button data-v="tier">Tierlist</button></div>
+  <div class="seg" role="group" aria-label="Lista"><span id="seg-thumb" class="seg-thumb" aria-hidden="true"></span><button data-v="tried">Me gustaron</button><button data-v="want">Quiero probar</button><button data-v="tier">Tierlist</button><button data-v="list">La compra</button></div>
   <input id="cmp-q" class="cmp-q" type="search" placeholder="Buscar: pizza, yogur, marca…" hidden>
   <nav id="chips" class="tabs" aria-label="Supermercados"></nav>
 </header>
@@ -36,6 +36,22 @@
 <main id="grid" class="grid"></main>
 <p id="empty" class="empty" hidden></p>
 
+<section id="shop" class="shop" hidden>
+  <div class="shop-add">
+    <input id="shop-in" type="text" enterkeyhint="done" autocomplete="off" placeholder="Añadir: leche, pan, papel de cocina…">
+    <button id="shop-add" type="button">Añadir</button>
+  </div>
+  <button id="shop-pick" type="button" class="ghost wide">Elegir de mis productos</button>
+  <div id="shop-prog" class="prog" hidden><div class="bar"><i id="shop-bar"></i></div><span id="shop-prog-txt"></span></div>
+  <div id="shop-total" class="shop-total" hidden></div>
+  <div id="shop-list" class="shop-list"></div>
+  <div class="shop-actions">
+    <button id="shop-finish" type="button" hidden>Terminar compra</button>
+    <div class="row"><button id="shop-hist" type="button" class="ghost">Historial</button><button id="shop-text" type="button" class="ghost" hidden>Compartir como texto</button></div>
+    <button id="shop-clear" type="button" class="link" hidden>Quitar los comprados sin guardar</button>
+  </div>
+</section>
+
 <section id="tiers" class="tiers" hidden>
   <p id="tier-hint" class="muted"></p>
   <div id="tier-rows"></div>
@@ -54,6 +70,33 @@
 <div id="cmp-bar" class="cmp-bar" hidden><span id="cmp-n"></span><button id="cmp-cancel" class="ghost" type="button">Cancelar</button><button id="cmp-go" type="button" disabled>Comparar</button></div>
 
 <button id="add" class="fab" aria-label="Añadir producto"><svg viewBox="0 0 24 24" width="30" height="30" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M12 4v16M4 12h16"/></svg></button>
+
+<dialog id="pick-dlg">
+  <div class="body">
+    <div class="cmp-head"><h2>Mis productos</h2><button id="pick-close" class="x2" type="button" aria-label="Listo">✕</button></div>
+    <input id="pick-q" type="search" placeholder="Buscar: pizza, yogur, marca…" autocomplete="off">
+    <div id="pick-scope" class="tagrow pick-scope"></div>
+    <p class="muted">Toca un producto para añadirlo. Si tocas otra vez, sube la cantidad.</p>
+    <div id="pick-grid" class="grid pick-grid"></div>
+    <button id="pick-done" type="button" class="wide" onclick="document.getElementById('pick-close').click()">Listo</button>
+  </div>
+</dialog>
+
+<dialog id="fin-dlg">
+  <div class="body">
+    <h2>Terminar compra</h2>
+    <p id="fin-txt"></p>
+    <p id="fin-list" class="muted"></p>
+    <div class="row"><button id="fin-go" type="button">Guardar compra</button><button id="fin-cancel" type="button" class="ghost">Cancelar</button></div>
+  </div>
+</dialog>
+
+<dialog id="hist-dlg">
+  <div class="body">
+    <div class="cmp-head"><h2>Historial</h2><button id="hist-close" class="x2" type="button" aria-label="Cerrar">✕</button></div>
+    <div id="hist-list"></div>
+  </div>
+</dialog>
 
 <dialog id="tagset-dlg">
   <div class="body">
@@ -208,6 +251,6 @@
 </dialog>
 
 <script src="firebase-config.js"></script>
-<script src="app.js?v=22"></script>
+<script src="app.js?v=24"></script>
 </body>
 </html>
