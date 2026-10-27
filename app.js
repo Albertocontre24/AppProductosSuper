@@ -965,7 +965,7 @@ async function pushShop() {
 addEventListener('pagehide', () => { if (shopSaveT) pushShop(); });
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden' && shopSaveT) pushShop(); });
 const prodOf = it => it.pid ? items.find(p => p.id === it.pid) : null;
-const priceOf = it => { const p = prodOf(it); return p && p.price != null ? p.price : it.price ?? null; };
+const priceOf = it => { if (it.paid != null) return it.paid; const p = prodOf(it); return p && p.price != null ? p.price : it.price ?? null; };
 const shopStore = it => it.store || NO_STORE;
 const knownStores = () => [...new Set([...DEFAULT_STORES, ...items.map(i => i.store), ...shop.map(i => i.store)].filter(Boolean))]
   .filter(s => s !== NO_STORE).sort((x, y) => x.localeCompare(y, 'es'));
@@ -997,7 +997,7 @@ function shopRows(list) {
     return `<div class="srow ${it.done ? 'done' : ''}" data-id="${it.id}">
       <button type="button" class="schk" aria-label="${it.done ? 'Quitar de comprado' : 'Marcar comprado'}" aria-pressed="${!!it.done}">✓</button>
       ${img ? `<span class="simg"><img src="${esc(img)}" alt=""></span>` : ''}
-      <span class="sname"><b>${esc(it.name)}</b>${sub ? `<small>${esc(sub)}</small>` : ''}${pr != null ? `<small class="sp">${q > 1 ? `${eur(pr)} × ${q} = ` : ''}<em>${money(pr * q)}</em></small>` : ''}</span>
+      <span class="sname"><b>${esc(it.name)}</b>${sub ? `<small>${esc(sub)}</small>` : ''}${pr != null ? `<small class="sp">${q > 1 ? `${eur(pr)} × ${q} = ` : ''}<em>${money(pr * q)}</em></small>` : `<small class="sp"><button type="button" class="sprice-add">+ precio</button></small>`}</span>
       <span class="sqty"><button type="button" class="qm" aria-label="Menos">−</button><b>${q}</b><button type="button" class="qp" aria-label="Más">+</button></span>
       <button type="button" class="sdel" aria-label="Quitar de la lista">✕</button>
     </div>`;
@@ -1050,17 +1050,23 @@ $('shop-list').onclick = e => {
   else if (e.target.closest('.qm')) it.qty = Math.max(1, (it.qty || 1) - 1);
   else if (e.target.closest('.qp')) it.qty = Math.min(99, (it.qty || 1) + 1);
   else if (e.target.closest('.sdel')) shop = shop.filter(x => x !== it);
+  else if (e.target.closest('.sprice-add')) return openShopEdit(it, true);
   else if (e.target.closest('.sname')) return openShopEdit(it);
   else return;
   saveShop(); render();
 };
 // editar un artículo: cambiar el súper o el nombre
-function openShopEdit(it) {
+function openShopEdit(it, focusPrice) {
   shopEditing = it;
   $('se-name').value = it.name;
+  const p = prodOf(it);
+  $('se-price').value = it.paid ?? '';
+  $('se-price').placeholder = p && p.price != null ? `${priceNum(p.price)} (el de tu producto)` : 'Opcional';
+  $('se-pnote').textContent = p ? 'Si pones un precio aquí, solo cuenta para esta lista. Déjalo vacío para usar el del producto.' : 'Se guarda en el historial cuando termines la compra.';
   $('se-store').innerHTML = storeOpts(shopStore(it));
   $('se-new-l').hidden = true; $('se-new').value = '';
   $('sedit-dlg').showModal();
+  if (focusPrice) setTimeout(() => $('se-price').focus(), 60);
 }
 $('se-store').onchange = e => { $('se-new-l').hidden = e.target.value !== '__new'; if (!$('se-new-l').hidden) $('se-new').focus(); };
 $('se-cancel').onclick = () => $('sedit-dlg').close();
@@ -1071,6 +1077,7 @@ $('sedit-form').onsubmit = e => {
   const v = $('se-store').value;
   const store = v === '__new' ? ($('se-new').value.trim() || NO_STORE) : v;
   it.name = $('se-name').value.trim() || it.name;
+  it.paid = $('se-price').value === '' ? null : Math.max(0, Number($('se-price').value));
   it.store = store;
   saveShop(); $('sedit-dlg').close(); render();
 };
@@ -1141,7 +1148,7 @@ async function paintHist() {
     const stores = [...new Set(t.items.map(i => i.store))].join(', ');
     return `<div class="trip" data-id="${t.id}"><div class="trip-h"><b>${fmtDate(t.date)}</b><span>${t.total ? money(t.total) : ''}</span></div>
       <p class="muted">${t.items.length === 1 ? '1 producto' : t.items.length + ' productos'}${stores ? ` en ${esc(stores)}` : ''}</p>
-      <p class="trip-i">${esc(t.items.map(i => i.name + (i.qty > 1 ? ' ×' + i.qty : '')).join(', '))}</p>
+      <ul class="trip-items">${t.items.map(i => `<li><span>${esc(i.name)}${i.qty > 1 ? ' ×' + i.qty : ''}</span><b>${i.price != null ? money(i.price * i.qty) : '<em>sin precio</em>'}</b></li>`).join('')}</ul>
       <div class="row"><button type="button" class="rebuy">Volver a comprar</button><button type="button" class="deltrip ghost">Borrar</button></div></div>`;
   }).join('') : '<p class="muted">Aún no has guardado ninguna compra. Marca lo que compres y pulsa «Terminar compra».</p>';
 }
@@ -1155,7 +1162,7 @@ $('hist-list').onclick = async e => {
   for (const i of trip.items) {
     const same = shop.find(x => !x.done && (i.pid ? x.pid === i.pid : !x.pid && norm(x.name) === norm(i.name) && shopStore(x) === i.store));
     if (same) same.qty = Math.min(99, (same.qty || 1) + i.qty);
-    else shop.push({ id: crypto.randomUUID(), created: Date.now(), qty: i.qty, done: false, pid: i.pid || undefined, name: i.name, store: i.store === NO_STORE ? '' : i.store, price: i.price ?? null });
+    else shop.push({ id: crypto.randomUUID(), created: Date.now(), qty: i.qty, done: false, pid: i.pid || undefined, name: i.name, store: i.store === NO_STORE ? '' : i.store, price: i.price ?? null, paid: i.pid ? null : i.price ?? null });
   }
   saveShop(); filter = 'Todos'; $('hist-dlg').close(); render();
 };
