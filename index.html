@@ -9,7 +9,7 @@
 <link rel="icon" href="icon.svg">
 <link rel="apple-touch-icon" href="icon.svg">
 <link rel="preload" href="fonts/BarlowCondensed-800.woff2" as="font" type="font/woff2" crossorigin>
-<link rel="stylesheet" href="style.css?v=25">
+<link rel="stylesheet" href="style.css?v=27">
 </head>
 <body>
 <header>
@@ -74,6 +74,22 @@
 <div id="cmp-bar" class="cmp-bar" hidden><span id="cmp-n"></span><button id="cmp-cancel" class="ghost" type="button">Cancelar</button><button id="cmp-go" type="button" disabled>Comparar</button></div>
 
 <button id="add" class="fab" aria-label="Añadir producto"><svg viewBox="0 0 24 24" width="30" height="30" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M12 4v16M4 12h16"/></svg></button>
+
+<dialog id="ctx-dlg"><div class="body" id="ctx-body"></div></dialog>
+
+<dialog id="rate-dlg">
+  <form id="rate-form" method="dialog">
+    <h2>Valorar</h2>
+    <p id="rt-for" class="muted"></p>
+    <div class="score-in">
+      <button type="button" id="rt-minus" class="step" aria-label="Bajar medio punto">−</button>
+      <output id="rt-val">—</output>
+      <button type="button" id="rt-plus" class="step" aria-label="Subir medio punto">+</button>
+    </div>
+    <input id="rt-range" class="unset" type="range" min="0" max="10" step="0.5" value="5" aria-label="Puntuación de 0 a 10">
+    <div class="row"><button type="submit">Guardar</button><button type="button" id="rt-cancel" class="ghost">Cancelar</button></div>
+  </form>
+</dialog>
 
 <dialog id="sedit-dlg">
   <form id="sedit-form" method="dialog">
@@ -268,6 +284,6 @@
 </dialog>
 
 <script src="firebase-config.js"></script>
-<script src="app.js?v=26"></script>
+<script src="app.js?v=28"></script>
 </body>
 </html>

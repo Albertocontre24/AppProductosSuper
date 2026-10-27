@@ -400,13 +400,15 @@ function renderHist(i) {
     ${h.length >= 2 ? `<p class="hmm">Más barato: ${eur(min)}. Más caro: ${eur(max)}.</p>` : ''}
     <ul class="hlist">${rows.map(({ x, dl }) => `<li><span>${fmtDate(x.d)}</span><b>${eur(x.p)}</b>${dl == null ? '<em></em>' : `<em class="${dl > 0 ? 'up' : dl < 0 ? 'down' : ''}">${dl === 0 ? 'igual' : fmtDelta(dl)}</em>`}</li>`).join('')}</ul>`;
 }
-$('d-newprice').onclick = () => {
-  const i = editing; if (!i) return;
+let priceFromCtx = false;
+function openPrice(i) {
+  editing = i;
   $('pr-for').textContent = i.name || i.brand || 'Producto';
   $('pr-price').value = ''; $('pr-unit').value = '';
   $('pr-unit-lbl').textContent = `Precio por ${i.unit === 'litro' ? 'litro' : 'kg'} (opcional)`;
   $('price-dlg').showModal();
-};
+}
+$('d-newprice').onclick = () => { if (editing) { priceFromCtx = false; openPrice(editing); } };
 $('pr-cancel').onclick = () => $('price-dlg').close();
 $('price-form').onsubmit = async e => {
   e.preventDefault();
@@ -414,7 +416,8 @@ $('price-form').onsubmit = async e => {
   const u = $('pr-unit').value === '' ? (i.unitPrice ?? null) : Number($('pr-unit').value);
   const o = { ...i, price, unitPrice: u, history: historyWith(i, price, u) };
   await save(o); items = await loadAll();
-  $('price-dlg').close(); render(); openDetail(o.id);
+  $('price-dlg').close(); render(); if (!priceFromCtx) openDetail(o.id);
+  priceFromCtx = false;
 };
 
 // --- detail ---
@@ -984,10 +987,10 @@ function shopStats(list) {
   return { total, cart, missing, done, n: list.length };
 }
 const money = n => eur(Math.round(n * 100) / 100);
-function addShop(o) {
+function addShop(o, n = 1) {
   const same = shop.find(x => !x.done && (o.pid ? x.pid === o.pid : !x.pid && norm(x.name) === norm(o.name) && shopStore(x) === shopStore(o)));
-  if (same) same.qty = Math.min(99, (same.qty || 1) + 1);
-  else shop.push({ id: crypto.randomUUID(), created: Date.now(), qty: 1, done: false, ...o });
+  if (same) same.qty = Math.min(99, (same.qty || 1) + n);
+  else shop.push({ id: crypto.randomUUID(), created: Date.now(), qty: Math.min(99, n), done: false, ...o });
   saveShop();
 }
 function shopRows(list) {
@@ -1183,6 +1186,98 @@ $('shop-text').onclick = async () => {
   render(); setTimeout(() => { flashMsg = ''; render(); }, 3000);
 };
 
+// --- menú de pulsación larga sobre un producto ---
+let ctxItem = null, ctxQty = 1, suppressClick = false, lpTimer = null, lpStart = null;
+const ICON = {
+  edit: '<path d="M4 20h4L19 9l-4-4L4 16v4z"/>',
+  tag: '<path d="M3 12V4h8l10 10-8 8L3 12z"/><circle cx="7.5" cy="8.5" r="1.2"/>',
+  star: '<path d="m12 3 2.8 5.8 6.2.9-4.5 4.4 1.1 6.2L12 17.3l-5.6 3 1.1-6.2L3 9.7l6.2-.9z"/>',
+  euro: '<path d="M17 6.5a6.5 6.5 0 1 0 0 11M4 10.5h9M4 13.5h9"/>',
+  cart: '<circle cx="9" cy="20" r="1.4"/><circle cx="18" cy="20" r="1.4"/><path d="M3 4h2.5l2.2 11h10.3l2-8H6.3"/>',
+  trash: '<path d="M5 7h14M10 7V4h4v3M7 7l1 13h8l1-13"/>',
+  ok: '<path d="M5 12.5 10 17.5 19 7"/>',
+};
+const ico = k => `<span class="ico" aria-hidden="true"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">${ICON[k]}</svg></span>`;
+function openCtx(id) {
+  const it = items.find(x => x.id === id); if (!it || viewer) return;
+  ctxItem = it; ctxQty = 1;
+  const img = imgOf(it), want = isWant(it);
+  const rows = [
+    ['edit', 'edit', 'Editar'],
+    ['tag', 'tag', it.tag ? `Etiquetar (ahora: ${it.tag})` : 'Etiquetar'],
+    want ? ['tried', 'ok', 'Ya lo probé: valorarlo'] : ['rate', 'star', scoreOf(it) != null ? `Volver a valorar (ahora: ${fmtScore(scoreOf(it))})` : 'Valorar'],
+    ['price', 'euro', it.price != null ? `Modificar precio (ahora: ${eur(it.price)})` : 'Poner precio'],
+  ];
+  $('ctx-body').innerHTML = `
+    <div class="ctx-head">${img ? `<img src="${esc(img)}" alt="">` : '<span class="noimg">Sin foto</span>'}<div><b>${esc(it.name || it.brand || 'Producto')}</b><small>${esc(it.brand && it.name ? it.brand + ' en ' : 'En ')}${esc(it.store)}</small></div></div>
+    <div class="ctx-list">
+      ${rows.map(([k, i, l]) => `<button type="button" class="cact" data-a="${k}">${ico(i)}<span>${esc(l)}</span></button>`).join('')}
+      <div class="cact cart">${ico('cart')}<div class="cartc"><span>Añadir a la lista de la compra</span>
+        <div class="cartrow"><span class="sqty"><button type="button" class="cq-m" aria-label="Menos">−</button><b id="cq">1</b><button type="button" class="cq-p" aria-label="Más">+</button></span>
+        <button type="button" class="cadd" data-a="cart">Añadir</button></div></div></div>
+      <button type="button" class="cact danger" data-a="del">${ico('trash')}<span>Borrar</span></button>
+    </div>`;
+  $('ctx-dlg').showModal();
+  if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
+}
+$('ctx-body').onclick = async e => {
+  const it = ctxItem; if (!it) return;
+  if (e.target.closest('.cq-m')) { ctxQty = Math.max(1, ctxQty - 1); $('cq').textContent = ctxQty; return; }
+  if (e.target.closest('.cq-p')) { ctxQty = Math.min(99, ctxQty + 1); $('cq').textContent = ctxQty; return; }
+  const b = e.target.closest('[data-a]'); if (!b) return;
+  const act = b.dataset.a;
+  if (act === 'cart') {
+    addShop({ pid: it.id, name: it.name || it.brand || 'Producto', store: it.store || NO_STORE, price: it.price ?? null }, ctxQty);
+    $('ctx-dlg').close();
+    flashMsg = `Añadido a la compra ×${ctxQty}: ${it.name || it.brand || 'producto'}`; render();
+    setTimeout(() => { flashMsg = ''; render(); }, 3200); return;
+  }
+  $('ctx-dlg').close();
+  if (act === 'edit') openForm(it);
+  else if (act === 'tried') openForm(it, 'tried');
+  else if (act === 'tag') { cmpSel = new Set([it.id]); openTagSet(); $('ts-tag').value = it.tag || ''; paintTagSet(); $('ts-for').textContent = `Etiqueta de «${it.name || it.brand || 'producto'}».`; }
+  else if (act === 'rate') openRate(it);
+  else if (act === 'price') { priceFromCtx = true; openPrice(it); }
+  else if (act === 'del') {
+    if (!confirm(`¿Borrar «${it.name || it.brand || 'este producto'}»?`)) return;
+    await remove(it.id); items = await loadAll(); render();
+  }
+};
+// valorar de nuevo
+let rtScore = null, rtItem = null;
+function setRt(n) {
+  rtScore = n; $('rt-val').textContent = n == null ? '—' : fmtScore(n); $('rt-range').value = n == null ? 5 : n;
+  $('rt-range').classList.toggle('unset', n == null);
+}
+function openRate(it) { rtItem = it; $('rt-for').textContent = it.name || it.brand || 'Producto'; setRt(scoreOf(it)); $('rate-dlg').showModal(); }
+$('rt-minus').onclick = () => setRt(Math.min(10, Math.max(0, (rtScore ?? 5.5) - 0.5)));
+$('rt-plus').onclick = () => setRt(Math.min(10, Math.max(0, (rtScore ?? 4.5) + 0.5)));
+$('rt-range').oninput = e => setRt(Number(e.target.value));
+$('rt-cancel').onclick = () => $('rate-dlg').close();
+$('rate-form').onsubmit = async e => {
+  e.preventDefault();
+  const it = rtItem; if (!it) return;
+  const o = { ...it, score: rtScore }; delete o.rating;
+  await save(o); items = await loadAll(); $('rate-dlg').close(); render();
+};
+// pulsación larga (y clic derecho en ordenador)
+$('grid').addEventListener('pointerdown', e => {
+  const c = e.target.closest('.card'); if (!c || cmpOn || viewer || e.button > 0) return;
+  lpStart = { x: e.clientX, y: e.clientY };
+  clearTimeout(lpTimer);
+  lpTimer = setTimeout(() => { lpTimer = null; suppressClick = true; try { navigator.vibrate && navigator.vibrate(18); } catch {} openCtx(c.dataset.id); }, 480);
+});
+const lpCancel = () => { clearTimeout(lpTimer); lpTimer = null; };
+$('grid').addEventListener('pointerup', lpCancel);
+$('grid').addEventListener('pointercancel', lpCancel);
+$('grid').addEventListener('pointerleave', lpCancel);
+$('grid').addEventListener('pointermove', e => { if (lpTimer && lpStart && Math.hypot(e.clientX - lpStart.x, e.clientY - lpStart.y) > 10) lpCancel(); });
+$('grid').addEventListener('contextmenu', e => {
+  const c = e.target.closest('.card'); if (!c) return;
+  e.preventDefault(); if (cmpOn || viewer) return;
+  lpCancel(); suppressClick = true; openCtx(c.dataset.id);
+});
+
 // --- events ---
 $('add').onclick = () => openForm(null, view === 'want' ? 'want' : 'tried');
 $('f-cancel').onclick = () => $('form-dlg').close();
@@ -1196,13 +1291,14 @@ $('d-del').onclick = async () => {
 };
 $('chips').onclick = e => { const b = e.target.closest('.tab'); if (b) { filter = b.dataset.s; render(); } };
 $('grid').onclick = e => {
+  if (suppressClick) { suppressClick = false; return; }
   const c = e.target.closest('.card'); if (!c) return;
   if (!cmpOn) return openDetail(c.dataset.id);
   const id = c.dataset.id;
   if (cmpSel.has(id)) cmpSel.delete(id); else if (tagMode || cmpSel.size < 6) cmpSel.add(id);
   render();
 };
-for (const d of ['detail', 'form-dlg', 'cmp-dlg', 'share-dlg', 'price-dlg', 'sort-dlg', 'tagset-dlg', 'pick-dlg', 'fin-dlg', 'hist-dlg', 'sedit-dlg'])
+for (const d of ['detail', 'form-dlg', 'cmp-dlg', 'share-dlg', 'price-dlg', 'sort-dlg', 'tagset-dlg', 'pick-dlg', 'fin-dlg', 'hist-dlg', 'sedit-dlg', 'ctx-dlg', 'rate-dlg'])
   $(d).addEventListener('click', e => { if (e.target === $(d)) $(d).close(); });
 
 document.fonts && document.fonts.ready.then(() => { segIdx = -1; tabPrev = null; placeSeg(); placeTabInk(); });
