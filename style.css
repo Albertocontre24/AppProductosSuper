@@ -115,3 +115,8 @@ button.wide{width:100%;margin-top:14px}
 .tabs{position:relative}
 .tab{border-bottom-color:transparent!important;transition:color .25s}
 .tab-ink{position:absolute;bottom:0;height:3px;border-radius:3px;background:var(--ink);pointer-events:none}
+
+.photo-btns{margin:-4px 0 14px}
+.photo-btns button{padding:12px 8px!important}
+.photo{padding:0!important}
+#f-photo-hint{padding:16px}

@@ -9,7 +9,7 @@
 <link rel="icon" href="icon.svg">
 <link rel="apple-touch-icon" href="icon.svg">
 <link rel="preload" href="fonts/BarlowCondensed-800.woff2" as="font" type="font/woff2" crossorigin>
-<link rel="stylesheet" href="style.css?v=10">
+<link rel="stylesheet" href="style.css?v=12">
 </head>
 <body>
 <header>
@@ -71,11 +71,16 @@
 <dialog id="form-dlg">
   <form id="form" method="dialog">
     <h2 id="f-title">Nuevo producto</h2>
-    <label class="photo">
+    <label class="photo" for="f-photo">
       <img id="f-preview" alt="" hidden>
-      <span id="f-photo-hint">📷 Hacer foto o elegir de la galería</span>
-      <input id="f-photo" type="file" accept="image/*" hidden>
+      <span id="f-photo-hint">Añade una foto</span>
     </label>
+    <input id="f-photo" type="file" accept="image/*" hidden>
+    <input id="f-cam" type="file" accept="image/*" capture="environment" hidden>
+    <div class="row photo-btns">
+      <button id="f-btn-cam" type="button" class="ghost">📷 Hacer foto</button>
+      <button id="f-btn-gal" type="button" class="ghost">🖼 Galería</button>
+    </div>
     <label>Supermercado
       <input id="f-store" list="stores" required placeholder="Lidl, Mercadona…" autocomplete="off">
       <datalist id="stores"></datalist>
@@ -111,6 +116,6 @@
 </dialog>
 
 <script src="firebase-config.js"></script>
-<script src="app.js?v=10"></script>
+<script src="app.js?v=11"></script>
 </body>
 </html>
