@@ -9,14 +9,14 @@
 <link rel="icon" href="icon.svg">
 <link rel="apple-touch-icon" href="icon.svg">
 <link rel="preload" href="fonts/BarlowCondensed-800.woff2" as="font" type="font/woff2" crossorigin>
-<link rel="stylesheet" href="style.css?v=9">
+<link rel="stylesheet" href="style.css?v=10">
 </head>
 <body>
 <header>
   <div class="top"><span class="brand">Mi súper</span><button id="account" class="ghost small" hidden></button></div>
   <h1 id="title">Mis productos</h1>
   <p id="count" class="count"></p>
-  <div class="seg" role="group" aria-label="Lista"><button data-v="tried">Me gustaron</button><button data-v="want">Quiero probar</button><button data-v="tier">Tierlist</button></div>
+  <div class="seg" role="group" aria-label="Lista"><span id="seg-thumb" class="seg-thumb" aria-hidden="true"></span><button data-v="tried">Me gustaron</button><button data-v="want">Quiero probar</button><button data-v="tier">Tierlist</button></div>
   <nav id="chips" class="tabs" aria-label="Supermercados"></nav>
 </header>
 
@@ -111,6 +111,6 @@
 </dialog>
 
 <script src="firebase-config.js"></script>
-<script src="app.js?v=9"></script>
+<script src="app.js?v=10"></script>
 </body>
 </html>
