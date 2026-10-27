@@ -124,22 +124,32 @@ function resize(file, max = 800) {
 }
 
 // --- render ---
+const unitLine = i => i.unitPrice ? `${eur(i.unitPrice)}/${i.unit === 'litro' ? 'l' : i.unit}` : '';
+const priceNum = n => Number(n).toFixed(2).replace('.', ',');
 function render() {
   const used = [...new Set(items.map(i => i.store))].sort();
   if (filter !== 'Todos' && !used.includes(filter)) filter = 'Todos';
   $('chips').innerHTML = ['Todos', ...used].map(s =>
-    `<button class="chip ${s === filter ? 'on' : ''}" data-s="${esc(s)}">${esc(s)}</button>`).join('');
+    `<button class="tab ${s === filter ? 'on' : ''}" data-s="${esc(s)}" ${s === filter ? 'aria-current="true"' : ''}>${esc(s)}</button>`).join('');
   const list = items.filter(i => filter === 'Todos' || i.store === filter)
     .sort((a, b) => b.created - a.created);
-  $('grid').innerHTML = list.map(i => `
+  $('title').textContent = filter === 'Todos' ? 'Mis productos' : filter;
+  $('count').textContent = list.length ? (list.length === 1 ? '1 producto' : `${list.length} productos`) : '';
+  $('grid').innerHTML = list.map(i => {
+    const sub2 = filter === 'Todos' ? (i.brand ? `${i.brand} en ${i.store}` : `En ${i.store}`) : i.brand;
+    return `
     <button class="card" data-id="${i.id}">
-      <img src="${i.photo || ''}" alt="" loading="lazy">
-      <div class="t"><b>${esc(i.name || i.brand || 'Producto')}</b>
-      <span>${esc(i.brand && i.name ? i.brand + ' · ' : '')}${eur(i.price)}</span>
-      <div class="stars">${stars(i.rating)}</div></div>
-    </button>`).join('');
+      <span class="ph">${i.photo ? `<img src="${i.photo}" alt="" loading="lazy">` : '<span class="noimg">Sin foto</span>'}
+        ${i.price != null ? `<span class="tag"><b>${priceNum(i.price)}<em>€</em></b>${unitLine(i) ? `<small>${unitLine(i)}</small>` : ''}</span>` : ''}</span>
+      <span class="nm">${esc(i.name || i.brand || 'Producto')}</span>
+      ${sub2 ? `<span class="br">${esc(sub2)}</span>` : ''}
+      ${i.rating ? `<span class="stars" aria-label="${i.rating} de 5">${stars(i.rating)}</span>` : ''}
+    </button>`;
+  }).join('');
   $('empty').hidden = list.length > 0;
-  $('empty').textContent = items.length ? 'Nada aquí todavía.' : 'Aún no hay productos. Pulsa ＋ y hazle una foto al primero.';
+  $('empty').textContent = items.length
+    ? `Todavía no hay nada en ${filter}. Pulsa + y hazle una foto al primero.`
+    : 'Aún no hay productos. Pulsa + y hazle una foto al primero que te guste.';
   $('stores').innerHTML = stores().map(s => `<option value="${esc(s)}">`).join('');
 }
 function esc(s) { return String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
@@ -150,10 +160,11 @@ function openDetail(id) {
   editing = i;
   $('d-img').src = i.photo || '';
   $('d-name').textContent = i.name || i.brand || 'Producto';
-  $('d-meta').textContent = [i.store, i.name ? i.brand : ''].filter(Boolean).join(' · ');
+  $('d-meta').textContent = i.name && i.brand ? `${i.brand} en ${i.store}` : `En ${i.store}`;
   $('d-stars').innerHTML = stars(i.rating);
-  $('d-price').textContent = eur(i.price);
-  $('d-unit').textContent = i.unitPrice ? `${eur(i.unitPrice)} / ${i.unit}` : '';
+  $('d-tag').hidden = i.price == null;
+  $('d-price').innerHTML = i.price == null ? '' : `${priceNum(i.price)}<em>€</em>`;
+  $('d-unit').textContent = unitLine(i);
   $('d-note').textContent = i.note || '';
   $('detail').showModal();
 }
@@ -208,7 +219,7 @@ $('d-del').onclick = async () => {
   if (!confirm('¿Borrar este producto?')) return;
   await remove(editing.id); items = await loadAll(); $('detail').close(); render();
 };
-$('chips').onclick = e => { const b = e.target.closest('.chip'); if (b) { filter = b.dataset.s; render(); } };
+$('chips').onclick = e => { const b = e.target.closest('.tab'); if (b) { filter = b.dataset.s; render(); } };
 $('grid').onclick = e => { const c = e.target.closest('.card'); if (c) openDetail(c.dataset.id); };
 for (const d of ['detail', 'form-dlg'])
   $(d).addEventListener('click', e => { if (e.target === $(d)) $(d).close(); });
