@@ -123,6 +123,40 @@ function resize(file, max = 800) {
   });
 }
 
+// --- animaciones de la barra ---
+const reduceMotion = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
+let segIdx = -1, tabPrev = null;
+function placeSeg() {
+  const btns = [...document.querySelectorAll('.seg button')], th = $('seg-thumb');
+  const idx = btns.findIndex(b => b.dataset.v === view), b = btns[idx];
+  if (!b || !b.offsetWidth) return;
+  const to = b.offsetLeft, from = segIdx >= 0 ? btns[segIdx].offsetLeft : to;
+  th.style.width = b.offsetWidth + 'px';
+  th.style.transform = `translateX(${to}px)`;
+  if (segIdx >= 0 && segIdx !== idx && !reduceMotion()) {
+    const dir = Math.sign(to - from);
+    th.animate([
+      { transform: `translateX(${from}px) scale(1,1)` },
+      { transform: `translateX(${from + (to - from) * .55}px) scale(1.18,.82)`, offset: .35 },
+      { transform: `translateX(${to + dir * 7}px) scale(.96,1.1)`, offset: .7 },
+      { transform: `translateX(${to}px) scale(1,1)` },
+    ], { duration: 560, easing: 'cubic-bezier(.3,.9,.4,1)' });
+  }
+  segIdx = idx;
+}
+function placeTabInk() {
+  const nav = $('chips'), on = nav.querySelector('.tab.on'); if (!on) return;
+  const ink = document.createElement('span'); ink.className = 'tab-ink'; nav.appendChild(ink);
+  const to = { l: on.offsetLeft, w: on.offsetWidth };
+  ink.style.left = to.l + 'px'; ink.style.width = to.w + 'px';
+  if (tabPrev && (tabPrev.l !== to.l || tabPrev.w !== to.w) && !reduceMotion())
+    ink.animate([{ left: tabPrev.l + 'px', width: tabPrev.w + 'px' }, { left: to.l + 'px', width: to.w + 'px' }],
+      { duration: 460, easing: 'cubic-bezier(.34,1.45,.5,1)' });
+  if (tabPrev && tabPrev.s !== filter) on.scrollIntoView({ inline: 'center', block: 'nearest', behavior: reduceMotion() ? 'auto' : 'smooth' });
+  tabPrev = { ...to, s: filter };
+}
+addEventListener('resize', () => { segIdx = -1; tabPrev = null; placeSeg(); placeTabInk(); });
+
 // --- render ---
 const unitLine = i => i.unitPrice ? `${eur(i.unitPrice)}/${i.unit === 'litro' ? 'l' : i.unit}` : '';
 const priceNum = n => Number(n).toFixed(2).replace('.', ',');
@@ -133,9 +167,11 @@ function render() {
   if (filter !== 'Todos' && !used.includes(filter)) filter = 'Todos';
   $('chips').innerHTML = ['Todos', ...used].map(s =>
     `<button class="tab ${s === filter ? 'on' : ''}" data-s="${esc(s)}" ${s === filter ? 'aria-current="true"' : ''}>${esc(s)}</button>`).join('');
+  placeTabInk();
   document.querySelectorAll('.seg button').forEach(b => {
     const on = b.dataset.v === view; b.classList.toggle('on', on); b.setAttribute('aria-pressed', on);
   });
+  placeSeg();
   const want = view === 'want', tierView = view === 'tier';
   const list = items.filter(i => isWant(i) === want && (filter === 'Todos' || i.store === filter))
     .sort((a, b) => b.created - a.created);
@@ -445,5 +481,6 @@ $('grid').onclick = e => { const c = e.target.closest('.card'); if (c) openDetai
 for (const d of ['detail', 'form-dlg'])
   $(d).addEventListener('click', e => { if (e.target === $(d)) $(d).close(); });
 
+document.fonts && document.fonts.ready.then(() => { segIdx = -1; tabPrev = null; placeSeg(); placeTabInk(); });
 localAll().then(r => { items = r; render(); }).then(initCloud).then(ok => { if (!ok) $('account').hidden = true; });
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
