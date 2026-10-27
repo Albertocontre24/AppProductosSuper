@@ -8,11 +8,11 @@
 <link rel="manifest" href="manifest.json">
 <link rel="icon" href="icon.svg">
 <link rel="apple-touch-icon" href="icon.svg">
-<link rel="stylesheet" href="style.css?v=4">
+<link rel="stylesheet" href="style.css?v=5">
 </head>
 <body>
 <header>
-  <h1>🛒 Mis productos</h1>
+  <div class="top"><h1>🛒 Mis productos</h1><button id="account" class="ghost small" hidden></button></div>
   <div id="chips" class="chips"></div>
 </header>
 
@@ -20,6 +20,18 @@
 <p id="empty" class="empty" hidden></p>
 
 <button id="add" class="fab" aria-label="Añadir producto"><svg viewBox="0 0 24 24" width="30" height="30" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round"><path d="M12 4v16M4 12h16"/></svg></button>
+
+<dialog id="auth-dlg">
+  <div class="body">
+    <h2>Tu cuenta</h2>
+    <p class="muted">Entra para guardar tus productos en la nube y verlos en cualquier móvil.</p>
+    <label class="f">Correo<input id="a-email" type="email" autocomplete="email"></label>
+    <label class="f">Contraseña<input id="a-pass" type="password" autocomplete="current-password"></label>
+    <p id="a-err" class="err"></p>
+    <div class="row"><button id="a-login" type="button">Entrar</button><button id="a-create" type="button" class="ghost">Crear cuenta</button></div>
+    <p class="links"><button id="a-reset" type="button" class="link">¿Olvidaste la contraseña?</button> · <button id="a-skip" type="button" class="link">Seguir sin cuenta</button></p>
+  </div>
+</dialog>
 
 <dialog id="detail">
   <img id="d-img" alt="">
@@ -80,6 +92,7 @@
   </form>
 </dialog>
 
-<script src="app.js?v=4"></script>
+<script src="firebase-config.js"></script>
+<script src="app.js?v=5"></script>
 </body>
 </html>

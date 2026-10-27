@@ -18,16 +18,96 @@ async function tx(mode, fn) {
     t.onerror = () => rej(t.error);
   });
 }
-const loadAll = () => tx('readonly', s => s.getAll());
-const save = o => tx('readwrite', s => s.put(o));
-const remove = id => tx('readwrite', s => s.delete(id));
+const localAll = () => tx('readonly', s => s.getAll());
+const localSave = o => tx('readwrite', s => s.put(o));
+const localRemove = id => tx('readwrite', s => s.delete(id));
+
+// --- nube (Firebase) ---
+let cloud = null; // { auth, db, user }
+const useCloud = () => !!(cloud && cloud.user);
+const col = () => cloud.db.collection('users').doc(cloud.user.uid).collection('products');
+const loadAll = async () => useCloud() ? (await col().get()).docs.map(d => d.data()) : localAll();
+const save = o => useCloud() ? col().doc(o.id).set(o) : localSave(o);
+const remove = id => useCloud() ? col().doc(id).delete() : localRemove(id);
+
+function loadScript(src) {
+  return new Promise((res, rej) => {
+    const s = document.createElement('script');
+    s.src = src; s.onload = res; s.onerror = rej; document.head.appendChild(s);
+  });
+}
+const AUTH_ERR = {
+  'auth/invalid-credential': 'Correo o contraseña incorrectos.',
+  'auth/wrong-password': 'Correo o contraseña incorrectos.',
+  'auth/user-not-found': 'Correo o contraseña incorrectos.',
+  'auth/email-already-in-use': 'Ese correo ya tiene cuenta. Pulsa Entrar.',
+  'auth/weak-password': 'La contraseña debe tener al menos 6 caracteres.',
+  'auth/invalid-email': 'El correo no es válido.',
+  'auth/network-request-failed': 'Sin conexión. Inténtalo de nuevo.',
+};
+const authMsg = e => AUTH_ERR[e.code] || e.message;
+
+async function initCloud() {
+  const cfg = window.FIREBASE_CONFIG;
+  if (!cfg) return false;
+  try {
+    for (const f of ['app', 'auth', 'firestore'])
+      await loadScript(`https://www.gstatic.com/firebasejs/10.12.2/firebase-${f}-compat.js`);
+    firebase.initializeApp(cfg);
+    cloud = { auth: firebase.auth(), db: firebase.firestore(), user: null };
+    cloud.db.enablePersistence({ synchronizeTabs: true }).catch(() => {});
+    cloud.auth.onAuthStateChanged(async u => {
+      cloud.user = u;
+      updateAccount();
+      if (u) { $('auth-dlg').open && $('auth-dlg').close(); await migrateLocal(); }
+      else if (!sessionStorage.getItem('nocloud')) $('auth-dlg').showModal();
+      items = await loadAll(); render();
+    });
+    return true;
+  } catch (e) { cloud = null; return false; }
+}
+async function migrateLocal() {
+  const local = await localAll();
+  if (!local.length) return;
+  if (!confirm(`Hay ${local.length} producto(s) guardados solo en este móvil. ¿Subirlos a tu cuenta?`)) return;
+  await Promise.all(local.map(o => col().doc(o.id).set(o)));
+  await Promise.all(local.map(o => localRemove(o.id)));
+}
+function updateAccount() {
+  const b = $('account');
+  b.hidden = !cloud;
+  b.textContent = useCloud() ? '👤 ' + (cloud.user.email || '') : '👤 Entrar';
+}
+async function doAuth(create) {
+  $('a-err').textContent = '';
+  const email = $('a-email').value.trim(), pass = $('a-pass').value;
+  if (!email || !pass) { $('a-err').textContent = 'Escribe correo y contraseña.'; return; }
+  try {
+    await (create ? cloud.auth.createUserWithEmailAndPassword(email, pass)
+                  : cloud.auth.signInWithEmailAndPassword(email, pass));
+  } catch (e) { $('a-err').textContent = authMsg(e); }
+}
+$('a-login').onclick = () => doAuth(false);
+$('a-create').onclick = () => doAuth(true);
+$('a-skip').onclick = () => { sessionStorage.setItem('nocloud', '1'); $('auth-dlg').close(); };
+$('a-reset').onclick = async () => {
+  const email = $('a-email').value.trim();
+  if (!email) { $('a-err').textContent = 'Escribe tu correo arriba primero.'; return; }
+  try { await cloud.auth.sendPasswordResetEmail(email); $('a-err').textContent = 'Te hemos enviado un correo para cambiarla.'; }
+  catch (e) { $('a-err').textContent = authMsg(e); }
+};
+$('account').onclick = async () => {
+  if (useCloud()) {
+    if (confirm(`Sesión: ${cloud.user.email}\n¿Cerrar sesión?`)) { sessionStorage.removeItem('nocloud'); await cloud.auth.signOut(); }
+  } else { sessionStorage.removeItem('nocloud'); $('auth-dlg').showModal(); }
+};
 
 // --- helpers ---
 const eur = n => (n || n === 0) && n !== '' ? Number(n).toFixed(2).replace('.', ',') + ' €' : '';
 const stars = n => n ? '★'.repeat(n) + `<span class="off">${'★'.repeat(5 - n)}</span>` : '';
 const stores = () => [...new Set([...DEFAULT_STORES, ...items.map(i => i.store)])];
 
-function resize(file, max = 900) {
+function resize(file, max = 800) {
   return new Promise((res, rej) => {
     const img = new Image(), url = URL.createObjectURL(file);
     img.onload = () => {
@@ -36,7 +116,7 @@ function resize(file, max = 900) {
       c.width = Math.round(img.width * k); c.height = Math.round(img.height * k);
       c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
       URL.revokeObjectURL(url);
-      res(c.toDataURL('image/jpeg', 0.8));
+      res(c.toDataURL('image/jpeg', 0.7));
     };
     img.onerror = rej;
     img.src = url;
@@ -133,5 +213,5 @@ $('grid').onclick = e => { const c = e.target.closest('.card'); if (c) openDetai
 for (const d of ['detail', 'form-dlg'])
   $(d).addEventListener('click', e => { if (e.target === $(d)) $(d).close(); });
 
-loadAll().then(r => { items = r; render(); });
+localAll().then(r => { items = r; render(); }).then(initCloud).then(ok => { if (!ok) $('account').hidden = true; });
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
