@@ -1,7 +1,7 @@
 'use strict';
 const $ = id => document.getElementById(id);
 const DEFAULT_STORES = ['Lidl', 'Mercadona', 'Carrefour', 'Dia', 'Aldi', 'Alcampo'];
-let items = [], filter = 'Todos', editing = null, photoData = null;
+let items = [], filter = 'Todos', editing = null, photoData = null, rating = 0;
 
 // --- IndexedDB ---
 const dbp = new Promise((res, rej) => {
@@ -24,6 +24,7 @@ const remove = id => tx('readwrite', s => s.delete(id));
 
 // --- helpers ---
 const eur = n => (n || n === 0) && n !== '' ? Number(n).toFixed(2).replace('.', ',') + ' €' : '';
+const stars = n => n ? '★'.repeat(n) + `<span class="off">${'★'.repeat(5 - n)}</span>` : '';
 const stores = () => [...new Set([...DEFAULT_STORES, ...items.map(i => i.store)])];
 
 function resize(file, max = 900) {
@@ -54,7 +55,8 @@ function render() {
     <button class="card" data-id="${i.id}">
       <img src="${i.photo || ''}" alt="" loading="lazy">
       <div class="t"><b>${esc(i.name || i.brand || 'Producto')}</b>
-      <span>${esc(i.brand && i.name ? i.brand + ' · ' : '')}${eur(i.price)}</span></div>
+      <span>${esc(i.brand && i.name ? i.brand + ' · ' : '')}${eur(i.price)}</span>
+      <div class="stars">${stars(i.rating)}</div></div>
     </button>`).join('');
   $('empty').hidden = list.length > 0;
   $('empty').textContent = items.length ? 'Nada aquí todavía.' : 'Aún no hay productos. Pulsa ＋ y hazle una foto al primero.';
@@ -69,6 +71,7 @@ function openDetail(id) {
   $('d-img').src = i.photo || '';
   $('d-name').textContent = i.name || i.brand || 'Producto';
   $('d-meta').textContent = [i.store, i.name ? i.brand : ''].filter(Boolean).join(' · ');
+  $('d-stars').innerHTML = stars(i.rating);
   $('d-price').textContent = eur(i.price);
   $('d-unit').textContent = i.unitPrice ? `${eur(i.unitPrice)} / ${i.unit}` : '';
   $('d-note').textContent = i.note || '';
@@ -77,7 +80,7 @@ function openDetail(id) {
 
 // --- form ---
 function openForm(i) {
-  editing = i || null; photoData = i ? i.photo : null;
+  editing = i || null; photoData = i ? i.photo : null; setRating(i?.rating || 0);
   $('f-title').textContent = i ? 'Editar producto' : 'Nuevo producto';
   $('f-store').value = i ? i.store : (filter !== 'Todos' ? filter : '');
   $('f-brand').value = i?.brand || ''; $('f-name').value = i?.name || '';
@@ -87,6 +90,15 @@ function openForm(i) {
   $('f-photo-hint').hidden = !!photoData;
   $('form-dlg').showModal();
 }
+function setRating(n) {
+  rating = n;
+  $('f-stars').innerHTML = [1, 2, 3, 4, 5].map(k =>
+    `<button type="button" data-n="${k}" class="${k <= n ? 'on' : ''}" aria-label="${k} estrellas">★</button>`).join('');
+}
+$('f-stars').onclick = e => {
+  const b = e.target.closest('button'); if (!b) return;
+  const n = Number(b.dataset.n); setRating(n === rating ? 0 : n);
+};
 $('f-photo').onchange = async e => {
   const f = e.target.files[0]; if (!f) return;
   photoData = await resize(f);
@@ -99,7 +111,7 @@ $('form').onsubmit = async e => {
     id: editing?.id || crypto.randomUUID(), created: editing?.created || Date.now(),
     photo: photoData, store: $('f-store').value.trim(), brand: $('f-brand').value.trim(),
     name: $('f-name').value.trim(), price: num($('f-price').value),
-    unitPrice: num($('f-unitprice').value), unit: $('f-unit').value, note: $('f-note').value.trim(),
+    unitPrice: num($('f-unitprice').value), unit: $('f-unit').value, note: $('f-note').value.trim(), rating,
   };
   await save(o);
   items = await loadAll();
