@@ -9,7 +9,7 @@
 <link rel="icon" href="icon.svg">
 <link rel="apple-touch-icon" href="icon.svg">
 <link rel="preload" href="fonts/BarlowCondensed-800.woff2" as="font" type="font/woff2" crossorigin>
-<link rel="stylesheet" href="style.css?v=19">
+<link rel="stylesheet" href="style.css?v=20">
 </head>
 <body>
 <header>
@@ -26,7 +26,8 @@
 <div class="actions" id="actions">
   <button id="sort-btn" class="act" type="button" hidden><span class="ico" aria-hidden="true"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16M7 12h10M10 18h4"/></svg></span><span id="sort-lbl" class="lbl">Ordenar</span></button>
   <button id="map-btn" class="act" type="button" hidden><span class="ico" aria-hidden="true"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s-6-5.3-6-10a6 6 0 1 1 12 0c0 4.7-6 10-6 10z"/><circle cx="12" cy="11" r="2"/></svg></span><span class="lbl">Cerca de mí</span></button>
-  <button id="cmp-start" class="act primary" type="button" hidden><span class="ico" aria-hidden="true"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M7 7h12l-3-3M17 17H5l3 3"/></svg></span><span class="lbl">Comparar</span></button>
+  <button id="cmp-start" class="act" type="button" hidden><span class="ico" aria-hidden="true"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M7 7h12l-3-3M17 17H5l3 3"/></svg></span><span class="lbl">Comparar</span></button>
+  <button id="tag-start" class="act" type="button" hidden><span class="ico" aria-hidden="true"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12V4h8l10 10-8 8L3 12z"/><circle cx="7.5" cy="8.5" r="1.2"/></svg></span><span class="lbl">Etiquetar varios</span></button>
   <button id="share-btn" class="act" type="button" hidden><span class="ico" aria-hidden="true"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15V3M7.5 7.5 12 3l4.5 4.5M5 13v6a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-6"/></svg></span><span class="lbl">Compartir</span></button>
 </div>
 
@@ -53,6 +54,18 @@
 <div id="cmp-bar" class="cmp-bar" hidden><span id="cmp-n"></span><button id="cmp-cancel" class="ghost" type="button">Cancelar</button><button id="cmp-go" type="button" disabled>Comparar</button></div>
 
 <button id="add" class="fab" aria-label="Añadir producto"><svg viewBox="0 0 24 24" width="30" height="30" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M12 4v16M4 12h16"/></svg></button>
+
+<dialog id="tagset-dlg">
+  <div class="body">
+    <div class="cmp-head"><h2>Poner etiqueta</h2></div>
+    <p id="ts-for" class="muted"></p>
+    <label class="f">Etiqueta<input id="ts-tag" list="tags" placeholder="pizza, yogur, vegano…" autocomplete="off" maxlength="24"></label>
+    <div id="ts-chips" class="tagrow form-tags"></div>
+    <p id="ts-err" class="err"></p>
+    <button id="ts-go" type="button" class="wide">Poner etiqueta</button>
+    <div class="row"><button id="ts-clear" type="button" class="danger">Quitar etiqueta</button><button id="ts-cancel" type="button" class="ghost">Cancelar</button></div>
+  </div>
+</dialog>
 
 <dialog id="sort-dlg">
   <div class="body">
@@ -195,6 +208,6 @@
 </dialog>
 
 <script src="firebase-config.js"></script>
-<script src="app.js?v=19"></script>
+<script src="app.js?v=20"></script>
 </body>
 </html>
