@@ -538,12 +538,12 @@ async function offSearch(param, term) {
 async function loadSuggestions(force) {
   const liked = items.filter(i => !isWant(i) && scoreOf(i) >= 8)
     .sort((a, b) => scoreOf(b) - scoreOf(a) || b.created - a.created);
-  if (!liked.length) { sugState = { status: 'empty', list: [], key: '' }; return paintSug(); }
-  // categorías = las etiquetas de tus favoritos (hasta 3), con el producto que mejor puntúa de cada una
+  const wants = items.filter(i => isWant(i)).sort((a, b) => b.created - a.created);
+  // categorías = etiquetas de tus favoritos y, después, de lo que quieres probar (hasta 3 distintas)
   const seeds = [];
-  for (const it of liked) if (it.tag && !seeds.some(s => norm(s.tag) === norm(it.tag))) seeds.push({ tag: it.tag, from: it.name || it.brand });
+  for (const it of [...liked, ...wants]) if (it.tag && !seeds.some(s => norm(s.tag) === norm(it.tag))) seeds.push({ tag: it.tag, from: it.name || it.brand });
   seeds.splice(3);
-  if (!seeds.length) { sugState = { status: 'notag', list: [], key: '' }; return paintSug(); }
+  if (!seeds.length) { sugState = { status: liked.length || wants.length ? 'notag' : 'empty', list: [], key: '' }; return paintSug(); }
   const key = seeds.map(s => norm(s.tag)).join(',') + '|' + filter;
   if (!force && sugState.key === key) return paintSug();
   const cached = force ? null : readCache(key);
@@ -579,8 +579,8 @@ function paintSug() {
   const list = s.list.filter(x => !known.has(norm(x.name)) && !known.has(norm(`${x.brand} ${x.name}`)));
   const tags = (s.seeds || []).map(x => x.tag).join(', ');
   const msg = {
-    empty: 'Puntúa con 8 o más lo que te gusta y aquí saldrán ideas parecidas.',
-    notag: 'Ponle una etiqueta (pizza, yogur…) a los productos que más te gustan: así busco otros parecidos.',
+    empty: 'Guarda productos que te gusten o que quieras probar, con su etiqueta, y aquí saldrán ideas parecidas.',
+    notag: 'Ponle una etiqueta (pizza, yogur, helado…) a lo que más te gusta o a lo que quieres probar: así busco otros parecidos.',
     loading: 'Buscando productos parecidos…',
     error: `No se pudieron cargar las sugerencias (${s.detail || 'error desconocido'}). Pulsa «Buscar otras» para reintentarlo.`,
     done: list.length ? `Según tus etiquetas: ${tags}.` : (filter === 'Todos' ? `No encontré productos nuevos para: ${tags}. Puede que Open Food Facts no tenga esa categoría con ese nombre.` : `Open Food Facts no tiene productos de ${filter} para: ${tags}. Prueba con Todos.`),
