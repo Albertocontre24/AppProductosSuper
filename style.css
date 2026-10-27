@@ -291,3 +291,28 @@ button.sprice-add{padding:3px 10px!important;border-radius:999px!important;backg
 .trip-items li{display:flex;justify-content:space-between;gap:10px;padding:3px 0}
 .trip-items b{font:800 1rem var(--disp);white-space:nowrap}
 .trip-items em{font:500 .85rem var(--body);font-style:normal;color:var(--mute)}
+
+/* menú de pulsación larga */
+.card{-webkit-touch-callout:none;-webkit-user-select:none;user-select:none}
+.card .ph img{-webkit-user-drag:none;pointer-events:none}
+.ctx-head{display:flex;align-items:center;gap:14px;margin-bottom:12px}
+.ctx-head img,.ctx-head .noimg{flex:none;width:64px;height:64px;border-radius:14px;object-fit:cover;background:var(--line);font-size:.8rem}
+.ctx-head b{display:block;font:800 1.6rem/1 var(--disp)}
+.ctx-head small{color:var(--mute)}
+.ctx-list{display:flex;flex-direction:column}
+.cact{display:flex!important;align-items:center;gap:14px;width:100%;padding:12px 2px!important;border-radius:0!important;background:none!important;color:var(--ink)!important;box-shadow:none!important;border-bottom:1px solid var(--line)!important;font:500 1.05rem var(--body)!important;text-align:left}
+.cact>span:not(.ico):not(.sqty){flex:1}
+.cact .ico{width:34px;height:34px;border-radius:50%;display:grid;place-items:center;background:var(--tag);color:var(--tag-ink);flex:none}
+.cact.danger{color:var(--red)!important;border-bottom:0!important}
+.cact.danger .ico{background:transparent;box-shadow:inset 0 0 0 1.5px var(--red);color:var(--red)}
+.cact:active{opacity:.6}
+div.cact.cart{flex-wrap:wrap;gap:8px 12px}
+div.cact.cart>span:not(.ico):not(.sqty){flex:1 1 140px}
+div.cact.cart .sqty{margin-left:auto}
+button.cadd{padding:9px 18px!important;border-radius:12px!important;background:var(--ink)!important;color:var(--bg)!important;font:600 1rem var(--disp)!important}
+
+.cartc{flex:1;display:flex;flex-direction:column;gap:8px;min-width:0}
+.cartrow{display:flex;align-items:center;gap:14px}
+div.cact.cart{align-items:flex-start}
+div.cact.cart .ico{margin-top:2px}
+div.cact.cart .sqty{margin-left:0}
