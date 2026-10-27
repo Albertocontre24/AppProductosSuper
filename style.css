@@ -16,8 +16,7 @@ h1{margin:0 0 8px;font-size:1.3rem}
 .card span{font-size:.85rem;color:var(--mu)}
 .empty{text-align:center;color:var(--mu);padding:40px 24px}
 .fab{position:fixed;right:20px;bottom:calc(20px + env(safe-area-inset-bottom));width:60px;height:60px;border-radius:50%;border:0;padding:0;background:var(--g);box-shadow:0 4px 14px rgba(0,0,0,.3)}
-.fab::before,.fab::after{content:"";position:absolute;top:50%;left:50%;background:#fff;border-radius:2px;transform:translate(-50%,-50%)}
-.fab::before{width:26px;height:4px}.fab::after{width:4px;height:26px}
+.fab{display:flex;align-items:center;justify-content:center}
 dialog{border:0;border-radius:16px;padding:0;width:min(520px,94vw);max-height:92vh;background:var(--card);color:var(--tx)}
 dialog::backdrop{background:rgba(0,0,0,.55)}
 #detail img{width:100%;aspect-ratio:1;object-fit:cover;display:block}
