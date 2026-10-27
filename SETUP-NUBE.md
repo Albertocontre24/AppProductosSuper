@@ -8,3 +8,9 @@
 5. **Project settings (engranaje) → Your apps → Web (</>)** → registra la app → copia el objeto `firebaseConfig`.
 6. Pégalo en `firebase-config.js`: `window.FIREBASE_CONFIG = { apiKey: "...", ... };`
    (esa configuración no es secreta; la seguridad la dan las reglas del paso 4).
+
+## Compartir listas con amigos
+
+Para que funcione el botón **Compartir** hay que actualizar las reglas de Firestore:
+**Firestore Database → Reglas**, pega el contenido de `firestore.rules` y pulsa **Publicar**.
+Las listas compartidas son de solo lectura y se abren con un enlace largo e imposible de adivinar.
