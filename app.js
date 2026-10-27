@@ -1,7 +1,8 @@
 'use strict';
 const $ = id => document.getElementById(id);
 const DEFAULT_STORES = ['Lidl', 'Mercadona', 'Carrefour', 'Dia', 'Aldi', 'Alcampo'];
-let items = [], filter = 'Todos', editing = null, photoData = null, score = null, view = 'tried', formStatus = 'tried', selTier = null, cmpOn = false, cmpSel = new Set(), cmpQ = '', cmpSort = 'none', viewer = null, shareCfg = null;
+let items = [], filter = 'Todos', editing = null, photoData = null, score = null, view = 'tried', formStatus = 'tried', selTier = null, cmpOn = false, cmpSel = new Set(), cmpQ = '', cmpSort = 'none', viewer = null, shareCfg = null, tagFilter = null, lastList = [];
+let sortKey = (() => { try { return localStorage.getItem('sortKey') || 'new'; } catch { return 'new'; } })();
 
 // --- IndexedDB ---
 const dbp = new Promise((res, rej) => {
@@ -163,6 +164,91 @@ function placeTabInk() {
 }
 addEventListener('resize', () => { segIdx = -1; tabPrev = null; placeSeg(); placeTabInk(); });
 
+// --- etiquetas y orden ---
+const pnameOf = p => p.name || p.brand || '';
+const nl = (x, y, dir) => (x == null) - (y == null) || (x == null ? 0 : dir * (x - y));
+const byTag = (a, b) => (!a.tag) - (!b.tag) || (a.tag || '').localeCompare(b.tag || '', 'es');
+const SORT_FN = {
+  new: (a, b) => b.created - a.created,
+  old: (a, b) => a.created - b.created,
+  score: (a, b) => nl(scoreOf(a), scoreOf(b), -1) || b.created - a.created,
+  'score-asc': (a, b) => nl(scoreOf(a), scoreOf(b), 1) || b.created - a.created,
+  price: (a, b) => nl(a.price, b.price, 1) || b.created - a.created,
+  'price-desc': (a, b) => nl(a.price, b.price, -1) || b.created - a.created,
+  unit: (a, b) => nl(a.unitPrice, b.unitPrice, 1) || b.created - a.created,
+  tag: (a, b) => byTag(a, b) || b.created - a.created,
+  name: (a, b) => pnameOf(a).localeCompare(pnameOf(b), 'es'),
+};
+const SORT_OPTS = [['new', 'Más recientes', 'Recientes'], ['old', 'Más antiguos', 'Antiguos'], ['score', 'Mejor valorados', 'Mejor nota'],
+  ['score-asc', 'Peor valorados', 'Peor nota'], ['price', 'Precio: de menor a mayor', 'Más barato'], ['price-desc', 'Precio: de mayor a menor', 'Más caro'],
+  ['unit', 'Precio por kg o litro', 'Por kg o litro'], ['tag', 'Etiqueta (agrupado)', 'Etiqueta'], ['name', 'Nombre A-Z', 'A-Z']];
+const canonTag = t => {
+  t = String(t || '').trim().replace(/\s+/g, ' ');
+  if (!t) return '';
+  const known = allTags().find(x => norm(x.tag) === norm(t));
+  return known ? known.tag : t;
+};
+function allTags() {
+  const m = new Map();
+  for (const i of items) if (i.tag) m.set(i.tag, (m.get(i.tag) || 0) + 1);
+  return [...m].map(([tag, n]) => ({ tag, n })).sort((a, b) => b.n - a.n || a.tag.localeCompare(b.tag, 'es'));
+}
+const tagChips = () => {
+  const tags = allTags();
+  return [['', 'Todas'], ...tags.map(t => [t.tag, t.tag]), ['\0', 'Sin etiqueta']].map(([v, l]) => {
+    const on = v === '' ? tagFilter == null : tagFilter === (v === '\0' ? '' : v);
+    return `<button type="button" class="tagchip ${on ? 'on' : ''}" data-t="${esc(v)}" aria-pressed="${on}">${esc(l)}</button>`;
+  }).join('');
+};
+const setTagFilter = v => { tagFilter = v === '' ? null : v === '\0' ? '' : v; };
+function paintSort() {
+  $('so-opts').innerHTML = SORT_OPTS.map(([k, l]) =>
+    `<button type="button" class="opt ${k === sortKey ? 'on' : ''}" data-k="${k}" aria-pressed="${k === sortKey}"><span>${l}</span><i aria-hidden="true">✓</i></button>`).join('');
+  $('so-tags').innerHTML = allTags().length ? tagChips() : '<p class="muted">Aún no has creado etiquetas. Ponle una a un producto desde su formulario.</p>';
+}
+// barra de etiquetas del comparador y de la tierlist
+function paintTagBar() {
+  const show = (cmpOn || view === 'tier') && allTags().length > 0 && !viewer?.error;
+  $('tag-bar').hidden = !show;
+  if (!show) return;
+  const max = 6, n = lastList.length;
+  const all = cmpOn && tagFilter != null && n >= 2
+    ? `<button type="button" class="tagchip pickall" data-all="1">✓ Elegir ${n > max ? `los ${max} primeros de ${n}` : `los ${n}`}</button>` : '';
+  $('tag-bar').innerHTML = `<span class="tb-lbl">Etiqueta</span>${tagChips()}${all}`;
+}
+$('tag-bar').onclick = e => {
+  const b = e.target.closest('.tagchip'); if (!b) return;
+  if (b.dataset.all) { lastList.slice(0, 6).forEach(i => cmpSel.add(i.id)); return render(); }
+  setTagFilter(b.dataset.t); render();
+};
+$('sort-btn').onclick = () => { paintSort(); $('sort-dlg').showModal(); };
+$('so-close').onclick = () => $('sort-dlg').close();
+$('so-opts').onclick = e => {
+  const b = e.target.closest('.opt'); if (!b) return;
+  sortKey = b.dataset.k; try { localStorage.setItem('sortKey', sortKey); } catch {}
+  $('sort-dlg').close(); render();
+};
+$('so-tags').onclick = e => {
+  const b = e.target.closest('.tagchip'); if (!b) return;
+  setTagFilter(b.dataset.t); $('sort-dlg').close(); render();
+};
+function paintFormTags() {
+  const cur = norm($('f-tag').value);
+  $('f-tagchips').innerHTML = allTags().slice(0, 12).map(t =>
+    `<button type="button" class="tagchip ${norm(t.tag) === cur ? 'on' : ''}" data-t="${esc(t.tag)}">${esc(t.tag)}</button>`).join('');
+  $('tags').innerHTML = allTags().map(t => `<option value="${esc(t.tag)}">`).join('');
+}
+$('f-tagchips').onclick = e => {
+  const b = e.target.closest('.tagchip'); if (!b) return;
+  $('f-tag').value = norm($('f-tag').value) === norm(b.dataset.t) ? '' : b.dataset.t; paintFormTags();
+};
+$('f-tag').oninput = paintFormTags;
+// nombre de la tierlist según el filtro (para el título y la imagen)
+function tierName() {
+  const t = tagFilter ? ` de ${tagFilter}` : tagFilter === '' ? ' sin etiqueta' : '';
+  return `tierlist${t}${filter !== 'Todos' ? (t ? ` en ${filter}` : ` de ${filter}`) : ''}`;
+}
+
 // --- render ---
 const unitLine = i => i.unitPrice ? `${eur(i.unitPrice)}/${i.unit === 'litro' ? 'l' : i.unit}` : '';
 const priceNum = n => Number(n).toFixed(2).replace('.', ',');
@@ -195,22 +281,31 @@ function render() {
   renderViewerChrome();
   const want = view === 'want', tierView = view === 'tier';
   let list = items.filter(i => isWant(i) === want && (filter === 'Todos' || i.store === filter))
-    .sort((a, b) => b.created - a.created);
+    ;
+  if (tagFilter != null) list = list.filter(i => (i.tag || '') === tagFilter);
+  list.sort(SORT_FN[sortKey] || SORT_FN.new);
+  lastList = list;
   if (cmpOn && cmpQ) list = list.filter(i => norm(`${i.name} ${i.brand} ${i.store}`).includes(norm(cmpQ)));
-  $('title').textContent = want ? 'Quiero probar' : tierView ? (filter === 'Todos' ? 'Tierlist' : `Tierlist de ${filter}`) : (filter === 'Todos' ? 'Mis productos' : filter);
+  $('title').textContent = want ? 'Quiero probar' : tierView ? tierName().replace(/^t/, 'T') : (filter === 'Todos' ? 'Mis productos' : filter);
   $('count').textContent = list.length
-    ? `${list.length === 1 ? '1 producto' : list.length + ' productos'}${want && filter !== 'Todos' ? ' en ' + filter : ''}` : '';
+    ? `${list.length === 1 ? '1 producto' : list.length + ' productos'}${want && filter !== 'Todos' ? ' en ' + filter : ''}${tagFilter != null ? (tagFilter ? ` con la etiqueta ${tagFilter}` : ' sin etiqueta') : ''}` : '';
+  const gcount = {};
+  if (sortKey === 'tag') for (const i of list) gcount[i.tag || ''] = (gcount[i.tag || ''] || 0) + 1;
+  let lastGrp = null;
   $('grid').innerHTML = list.map(i => {
+    let head = '';
+    if (sortKey === 'tag' && (i.tag || '') !== lastGrp) { lastGrp = i.tag || ''; head = `<h3 class="grp">${esc(lastGrp || 'Sin etiqueta')}<small>${gcount[lastGrp]}</small></h3>`; }
     const sub2 = filter === 'Todos' ? (i.brand ? `${i.brand} en ${i.store}` : `En ${i.store}`) : i.brand;
     const img = imgOf(i);
     const picked = cmpOn && cmpSel.has(i.id);
-    return `
+    return head + `
     <button class="card ${cmpOn ? 'pick' : ''} ${picked ? 'picked' : ''}" data-id="${i.id}" ${cmpOn ? `aria-pressed="${picked}"` : ''}>
       <span class="ph">${img ? `<img src="${esc(img)}" alt="" loading="lazy">` : '<span class="noimg">Sin foto</span>'}
         ${cmpOn ? '<span class="chk" aria-hidden="true">✓</span>' : ''}
         ${i.price != null ? `<span class="tag"><b>${priceNum(i.price)}<em>€</em></b>${unitLine(i) ? `<small>${unitLine(i)}</small>` : ''}</span>` : ''}</span>
       <span class="nm">${esc(i.name || i.brand || 'Producto')}</span>
       ${sub2 ? `<span class="br">${esc(sub2)}</span>` : ''}
+      ${i.tag ? `<span class="tg">${esc(i.tag)}</span>` : ''}
       ${scoreOf(i) != null ? `<span class="score" aria-label="Puntuación ${fmtScore(scoreOf(i))} de 10">${scoreHtml(scoreOf(i))}</span>` : ''}
     </button>`;
   }).join('');
@@ -219,6 +314,7 @@ function render() {
   if (viewer?.error) { $('empty').hidden = false; }
   $('empty').textContent = viewer?.error ? 'Este enlace no está disponible o su dueño ya no comparte la lista.' : viewer?.loading ? 'Abriendo la lista…' : tierView
     ? 'Primero guarda productos en Me gustaron. Luego los ordenas aquí.'
+    : tagFilter != null && items.length ? 'No hay productos con esa etiqueta aquí. Cambia el filtro en Ordenar.'
     : want
     ? 'Aquí apuntas lo que quieres probar. Pulsa + y hazle una foto cuando lo veas en el súper.'
     : items.some(i => !isWant(i))
@@ -229,6 +325,9 @@ function render() {
   const nTried = items.filter(i => !isWant(i)).length;
   $('cmp-start').hidden = !(view === 'tried' && !cmpOn && nTried >= 2 && !viewer?.error);
   $('share-btn').hidden = !!viewer || cmpOn;
+  $('sort-btn').hidden = cmpOn || !!viewer?.error || !items.length;
+  $('sort-lbl').textContent = 'Ordenar: ' + SORT_OPTS.find(o => o[0] === sortKey)[2];
+  $('sort-btn').classList.toggle('filtered', tagFilter != null);
   $('map-btn').hidden = filter === 'Todos' || cmpOn || !!viewer?.error;
   $('cmp-q').hidden = !cmpOn; $('cmp-bar').hidden = !cmpOn; $('add').hidden = cmpOn || !!viewer;
   if (cmpOn) {
@@ -237,6 +336,7 @@ function render() {
     $('cmp-n').textContent = n === 1 ? '1 elegido' : `${n} elegidos`;
     $('cmp-go').disabled = n < 2;
   }
+  paintTagBar();
   $('tiers').hidden = !tierView;
   if (tierView) renderTiers(list);
   if (want && !viewer) loadSuggestions(false);
@@ -314,6 +414,7 @@ function openDetail(id) {
   $('d-img').src = imgOf(i);
   $('d-name').textContent = i.name || i.brand || 'Producto';
   $('d-meta').textContent = i.name && i.brand ? `${i.brand} en ${i.store}` : `En ${i.store}`;
+  $('d-etiq').hidden = !i.tag; $('d-etiq').textContent = i.tag || '';
   $('d-stars').innerHTML = scoreHtml(scoreOf(i));
   $('d-stars').hidden = scoreOf(i) == null;
   $('d-tag').hidden = i.price == null;
@@ -347,6 +448,7 @@ function openForm(i, status) {
   setFormStatus(status || i?.status || 'tried');
   $('f-store').value = i ? (i.store === NO_STORE ? '' : i.store) : (filter !== 'Todos' && filter !== NO_STORE ? filter : '');
   $('f-brand').value = i?.brand || ''; $('f-name').value = i?.name || '';
+  $('f-tag').value = i?.tag || ''; paintFormTags();
   $('f-price').value = i?.price ?? ''; $('f-unitprice').value = i?.unitPrice ?? '';
   $('f-unit').value = i?.unit || 'kg'; $('f-note').value = i?.note || '';
   const shown = i ? imgOf(i) : '';
@@ -385,7 +487,7 @@ $('form').onsubmit = async e => {
     id: editing?.id || crypto.randomUUID(), created: editing?.created || Date.now(), status: formStatus,
     photo: photoData, photoUrl: editing?.photoUrl || null, cat: editing?.cat, tier: editing?.tier ?? null,
     store: $('f-store').value.trim() || NO_STORE, brand: $('f-brand').value.trim(),
-    name: $('f-name').value.trim(), price: num($('f-price').value),
+    name: $('f-name').value.trim(), tag: canonTag($('f-tag').value), price: num($('f-price').value),
     unitPrice: num($('f-unitprice').value), unit: $('f-unit').value, note: $('f-note').value.trim(),
     score: want ? null : score,
   };
@@ -550,7 +652,7 @@ function loadImg(src) {
   return new Promise(res => { const im = new Image(); im.onload = () => res(im); im.onerror = () => res(null); im.src = src; });
 }
 $('tier-save').onclick = async () => {
-  const list = items.filter(i => !isWant(i) && (filter === 'Todos' || i.store === filter));
+  const list = items.filter(i => !isWant(i) && (filter === 'Todos' || i.store === filter) && (tagFilter == null || (i.tag || '') === tagFilter));
   const W = 1080, LBL = 150, S = 130, G = 10, per = Math.floor((W - LBL - G) / (S + G));
   const rows = TIERS.map(([t, c]) => [t, c, list.filter(i => i.tier === t)]);
   const heights = rows.map(([, , l]) => Math.max(150, Math.ceil(l.length / per) * (S + G) + G));
@@ -560,7 +662,7 @@ $('tier-save').onclick = async () => {
   const x = cv.getContext('2d');
   x.fillStyle = '#131a22'; x.fillRect(0, 0, W, H);
   x.fillStyle = '#fff'; x.font = '800 72px "Barlow Condensed", sans-serif'; x.textBaseline = 'middle';
-  x.fillText(filter === 'Todos' ? 'Mi tierlist del súper' : `Mi tierlist de ${filter}`, 30, HEAD / 2);
+  x.fillText(tagFilter == null && filter === 'Todos' ? 'Mi tierlist del súper' : `Mi ${tierName()}`, 30, HEAD / 2);
   let y = HEAD;
   for (let r = 0; r < rows.length; r++) {
     const [t, c, l] = rows[r], h = heights[r];
@@ -798,7 +900,7 @@ $('grid').onclick = e => {
   if (cmpSel.has(id)) cmpSel.delete(id); else if (cmpSel.size < 6) cmpSel.add(id);
   render();
 };
-for (const d of ['detail', 'form-dlg', 'cmp-dlg', 'share-dlg', 'price-dlg'])
+for (const d of ['detail', 'form-dlg', 'cmp-dlg', 'share-dlg', 'price-dlg', 'sort-dlg'])
   $(d).addEventListener('click', e => { if (e.target === $(d)) $(d).close(); });
 
 document.fonts && document.fonts.ready.then(() => { segIdx = -1; tabPrev = null; placeSeg(); placeTabInk(); });

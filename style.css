@@ -208,3 +208,25 @@ body.viewer .seg{max-width:300px}
 .hlist b{font:800 1.2rem/1 var(--disp)}
 .hlist em{font-style:normal;text-align:right;font-size:.82rem;color:var(--mute)}
 .hlist em.up{color:var(--red)}.hlist em.down{color:var(--good)}
+
+/* etiquetas y orden */
+.tg{display:inline-block;align-self:flex-start;margin-top:5px;padding:2px 9px;border-radius:999px;box-shadow:inset 0 0 0 1.3px var(--line);color:var(--mute);font:600 .8rem/1.4 var(--body)}
+.tg.big{font-size:.9rem;padding:3px 12px;margin:2px 0 0;color:var(--ink);box-shadow:inset 0 0 0 1.5px var(--ink)}
+.grp{grid-column:1/-1;display:flex;align-items:baseline;gap:8px;margin:10px 0 -6px;padding-top:10px;border-top:1px solid var(--line);font:800 1.9rem/1 var(--disp)}
+.grp:first-child{border-top:0;margin-top:0;padding-top:0}
+.grp small{font:600 1rem var(--disp);color:var(--mute)}
+button.act.filtered .ico{box-shadow:0 0 0 2.5px var(--surface),0 0 0 5px var(--ink)}
+.opts{display:flex;flex-direction:column;gap:2px;margin:10px 0 4px}
+button.opt{display:flex!important;justify-content:space-between;align-items:center;width:100%;padding:13px 4px!important;border-radius:0!important;background:none!important;color:var(--ink)!important;box-shadow:none!important;border-bottom:1px solid var(--line)!important;font:500 1.05rem var(--body)!important;text-align:left}
+button.opt i{font-style:normal;font-weight:800;opacity:0}
+button.opt.on{font-weight:700!important}
+button.opt.on i{opacity:1}
+.subh{font:800 1.5rem/1 var(--disp);margin:20px 0 10px}
+.tagrow{display:flex;flex-wrap:wrap;gap:8px}
+.form-tags{margin:-6px 0 14px}
+.tagbar{max-width:928px;margin:12px auto 0;padding:0 16px;align-items:center}
+.tb-lbl{font:600 1rem var(--disp);color:var(--mute);margin-right:2px}
+button.tagchip{padding:7px 14px!important;border-radius:999px!important;background:transparent!important;color:var(--ink)!important;box-shadow:inset 0 0 0 1.5px var(--line)!important;font:600 .95rem var(--body)!important;transition:transform .18s cubic-bezier(.3,1.6,.5,1)}
+button.tagchip.on{background:var(--ink)!important;color:var(--bg)!important;box-shadow:none!important}
+button.tagchip.pickall{background:var(--tag)!important;color:var(--tag-ink)!important;box-shadow:none!important;font-weight:700!important}
+button.tagchip:active{transform:scale(.94)}
