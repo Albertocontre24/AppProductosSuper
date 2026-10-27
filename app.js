@@ -1,7 +1,7 @@
 'use strict';
 const $ = id => document.getElementById(id);
 const DEFAULT_STORES = ['Lidl', 'Mercadona', 'Carrefour', 'Dia', 'Aldi', 'Alcampo'];
-let items = [], filter = 'Todos', editing = null, photoData = null, score = null, view = 'tried', formStatus = 'tried', selTier = null, cmpOn = false, cmpSel = new Set(), cmpQ = '', cmpSort = 'none', viewer = null, shareCfg = null, tagFilter = null, lastList = [];
+let items = [], filter = 'Todos', editing = null, photoData = null, score = null, view = 'tried', formStatus = 'tried', selTier = null, cmpOn = false, cmpSel = new Set(), cmpQ = '', cmpSort = 'none', viewer = null, shareCfg = null, tagFilter = null, lastList = [], tagMode = false, flashMsg = '';
 let sortKey = (() => { try { return localStorage.getItem('sortKey') || 'new'; } catch { return 'new'; } })();
 
 // --- IndexedDB ---
@@ -208,17 +208,17 @@ function paintSort() {
 }
 // barra de etiquetas del comparador y de la tierlist
 function paintTagBar() {
-  const show = (cmpOn || view === 'tier') && allTags().length > 0 && !viewer?.error;
+  const show = (cmpOn || view === 'tier') && (allTags().length > 0 || (cmpOn && tagMode && lastList.length)) && !viewer?.error;
   $('tag-bar').hidden = !show;
   if (!show) return;
   const max = 6, n = lastList.length;
-  const all = cmpOn && tagFilter != null && n >= 2
-    ? `<button type="button" class="tagchip pickall" data-all="1">✓ Elegir ${n > max ? `los ${max} primeros de ${n}` : `los ${n}`}</button>` : '';
+  const all = cmpOn && (tagMode ? n >= 1 : tagFilter != null && n >= 2)
+    ? `<button type="button" class="tagchip pickall" data-all="1">✓ Elegir ${tagMode ? `los ${n} visibles` : n > max ? `los ${max} primeros de ${n}` : `los ${n}`}</button>` : '';
   $('tag-bar').innerHTML = `<span class="tb-lbl">Etiqueta</span>${tagChips()}${all}`;
 }
 $('tag-bar').onclick = e => {
   const b = e.target.closest('.tagchip'); if (!b) return;
-  if (b.dataset.all) { lastList.slice(0, 6).forEach(i => cmpSel.add(i.id)); return render(); }
+  if (b.dataset.all) { lastList.slice(0, tagMode ? lastList.length : 6).forEach(i => cmpSel.add(i.id)); return render(); }
   setTagFilter(b.dataset.t); render();
 };
 $('sort-btn').onclick = () => { paintSort(); $('sort-dlg').showModal(); };
@@ -277,18 +277,20 @@ function render() {
     const on = b.dataset.v === view; b.classList.toggle('on', on); b.setAttribute('aria-pressed', on);
   });
   placeSeg();
-  if (view !== 'tried') cmpOn = false;
+  if (cmpOn && (tagMode ? view === 'tier' : view !== 'tried')) cmpOn = false;
+  if (!cmpOn) tagMode = false;
   renderViewerChrome();
   const want = view === 'want', tierView = view === 'tier';
   let list = items.filter(i => isWant(i) === want && (filter === 'Todos' || i.store === filter))
     ;
   if (tagFilter != null) list = list.filter(i => (i.tag || '') === tagFilter);
   list.sort(SORT_FN[sortKey] || SORT_FN.new);
-  lastList = list;
   if (cmpOn && cmpQ) list = list.filter(i => norm(`${i.name} ${i.brand} ${i.store}`).includes(norm(cmpQ)));
+  lastList = list;
   $('title').textContent = want ? 'Quiero probar' : tierView ? tierName().replace(/^t/, 'T') : (filter === 'Todos' ? 'Mis productos' : filter);
   $('count').textContent = list.length
     ? `${list.length === 1 ? '1 producto' : list.length + ' productos'}${want && filter !== 'Todos' ? ' en ' + filter : ''}${tagFilter != null ? (tagFilter ? ` con la etiqueta ${tagFilter}` : ' sin etiqueta') : ''}` : '';
+  if (flashMsg) $('count').textContent = flashMsg;
   const gcount = {};
   if (sortKey === 'tag') for (const i of list) gcount[i.tag || ''] = (gcount[i.tag || ''] || 0) + 1;
   let lastGrp = null;
@@ -325,16 +327,18 @@ function render() {
   const nTried = items.filter(i => !isWant(i)).length;
   $('cmp-start').hidden = !(view === 'tried' && !cmpOn && nTried >= 2 && !viewer?.error);
   $('share-btn').hidden = !!viewer || cmpOn;
+  $('tag-start').hidden = !((view === 'tried' || view === 'want') && !cmpOn && items.length && !viewer);
   $('sort-btn').hidden = cmpOn || !!viewer?.error || !items.length;
   $('sort-lbl').textContent = 'Ordenar: ' + SORT_OPTS.find(o => o[0] === sortKey)[2];
   $('sort-btn').classList.toggle('filtered', tagFilter != null);
   $('map-btn').hidden = filter === 'Todos' || cmpOn || !!viewer?.error;
   $('cmp-q').hidden = !cmpOn; $('cmp-bar').hidden = !cmpOn; $('add').hidden = cmpOn || !!viewer;
   if (cmpOn) {
-    $('count').textContent = 'Elige de 2 a 6 productos para compararlos';
+    $('count').textContent = tagMode ? 'Elige los productos a los que poner etiqueta' : 'Elige de 2 a 6 productos para compararlos';
     const n = [...cmpSel].filter(id => items.some(i => i.id === id)).length;
     $('cmp-n').textContent = n === 1 ? '1 elegido' : `${n} elegidos`;
-    $('cmp-go').disabled = n < 2;
+    $('cmp-go').disabled = n < (tagMode ? 1 : 2);
+    $('cmp-go').textContent = tagMode ? 'Poner etiqueta' : 'Comparar';
   }
   paintTagBar();
   $('tiers').hidden = !tierView;
@@ -519,72 +523,67 @@ function readCache(key) {
 }
 function writeCache(key, list) { try { localStorage.setItem('sug1', JSON.stringify({ key, t: Date.now(), list })); } catch {} }
 
-async function categoryFor(it) {
-  if (it.cat !== undefined) return it.cat;
-  const q = norm(`${it.brand || ''} ${it.name || ''}`);
-  let tag = '';
-  if (q) {
-    await sleep(700);
-    const d = await offJson(`${OFF}/cgi/search.pl?search_simple=1&action=process&json=1&page_size=5&fields=categories_tags&search_terms=${encodeURIComponent(q)}&tagtype_0=countries&tag_contains_0=contains&tag_0=spain`);
-    const p = (d.products || []).find(p => (p.categories_tags || []).length);
-    tag = p ? p.categories_tags[p.categories_tags.length - 1] : '';
-  }
-  it.cat = tag;
-  try { await save(it); } catch {}
-  return tag;
-}
 function knownNames() {
   const k = new Set();
   for (const i of items) { k.add(norm(i.name)); k.add(norm(`${i.brand} ${i.name}`)); }
   k.delete('');
   return k;
 }
+async function offSearch(param, term) {
+  const q = `${OFF}/api/v2/search?${param}=${encodeURIComponent(term)}${filter !== 'Todos' ? '&stores_tags=' + storeTag(filter) : ''}&sort_by=popularity_key&page_size=30&fields=code,product_name,brands,image_front_small_url,stores`;
+  const r = await fetch(q);
+  if (!r.ok) { const e = new Error('http'); e.status = r.status; throw e; }
+  return (await r.json()).products || [];
+}
 async function loadSuggestions(force) {
   const liked = items.filter(i => !isWant(i) && scoreOf(i) >= 8)
     .sort((a, b) => scoreOf(b) - scoreOf(a) || b.created - a.created);
   if (!liked.length) { sugState = { status: 'empty', list: [], key: '' }; return paintSug(); }
-  const key = liked.map(i => i.id).join(',') + '|' + filter;
-  if (!force && sugState.key === key && sugState.status !== 'error') return paintSug();
+  // categorías = las etiquetas de tus favoritos (hasta 3), con el producto que mejor puntúa de cada una
+  const seeds = [];
+  for (const it of liked) if (it.tag && !seeds.some(s => norm(s.tag) === norm(it.tag))) seeds.push({ tag: it.tag, from: it.name || it.brand });
+  seeds.splice(3);
+  if (!seeds.length) { sugState = { status: 'notag', list: [], key: '' }; return paintSug(); }
+  const key = seeds.map(s => norm(s.tag)).join(',') + '|' + filter;
+  if (!force && sugState.key === key) return paintSug();
   const cached = force ? null : readCache(key);
-  if (cached) { sugState = { key, status: 'done', list: cached }; return paintSug(); }
+  if (cached) { sugState = { key, status: 'done', list: cached, seeds }; return paintSug(); }
   if (sugBusy) return;
-  sugBusy = true; sugState = { key, status: 'loading', list: [] }; paintSug();
-  try {
-    const cats = []; let lookups = 0;
-    for (const it of liked) {
-      if (cats.length >= 3) break;
-      if (it.cat === undefined && lookups++ >= 5) break;
-      const tag = await categoryFor(it);
-      if (tag && !cats.some(c => c.tag === tag)) cats.push({ tag, from: it.name || it.brand });
-    }
-    const known = knownNames(), seen = new Set(), list = [];
-    for (const c of cats) {
-      await sleep(700);
-      const d = await offJson(`${OFF}/api/v2/search?categories_tags=${encodeURIComponent(c.tag)}&countries_tags=en:spain${filter !== 'Todos' ? '&stores_tags=' + storeTag(filter) : ''}&sort_by=popularity_key&page_size=30&fields=code,product_name,brands,image_front_small_url,stores`);
+  sugBusy = true; sugState = { key, status: 'loading', list: [], seeds }; paintSug();
+  const known = knownNames(), seen = new Set(), list = [];
+  let failed = 0, lastErr = null;
+  for (const sd of seeds) {
+    try {
+      await sleep(600);
+      let prods = await offSearch('categories_tags_es', sd.tag);
+      if (!prods.length) { await sleep(600); prods = await offSearch('categories_tags_en', sd.tag); }
       let n = 0;
-      for (const p of d.products || []) {
-        const name = (p.product_name || '').trim();
-        const brand = (p.brands || '').split(',')[0].trim();
+      for (const p of prods) {
+        const name = (p.product_name || '').trim(), brand = (p.brands || '').split(',')[0].trim();
         if (!name || !p.image_front_small_url || seen.has(p.code)) continue;
         if (known.has(norm(name)) || known.has(norm(`${brand} ${name}`))) continue;
         seen.add(p.code);
-        list.push({ code: p.code, name, brand, img: p.image_front_small_url, store: (p.stores || '').split(',')[0].trim(), from: c.from });
+        list.push({ code: p.code, name, brand, img: p.image_front_small_url, store: (p.stores || '').split(',')[0].trim(), from: sd.from });
         if (++n >= 6) break;
       }
-    }
-    writeCache(key, list); sugState = { key, status: 'done', list };
-  } catch { sugState = { key, status: 'error', list: [] }; }
+    } catch (e) { failed++; lastErr = e; }
+  }
+  if (failed === seeds.length) {
+    sugState = { key, status: 'error', list: [], seeds, detail: lastErr && lastErr.status ? `Open Food Facts respondió con el error ${lastErr.status}` : 'no hay conexión o el navegador bloqueó la petición' };
+  } else { writeCache(key, list); sugState = { key, status: 'done', list, seeds }; }
   sugBusy = false; paintSug();
 }
 function paintSug() {
   if (view !== 'want') return;
   const s = sugState, known = knownNames();
   const list = s.list.filter(x => !known.has(norm(x.name)) && !known.has(norm(`${x.brand} ${x.name}`)));
+  const tags = (s.seeds || []).map(x => x.tag).join(', ');
   const msg = {
-    empty: 'Valora con 4 o 5 estrellas lo que te gusta y aquí saldrán ideas parecidas.',
+    empty: 'Puntúa con 8 o más lo que te gusta y aquí saldrán ideas parecidas.',
+    notag: 'Ponle una etiqueta (pizza, yogur…) a los productos que más te gustan: así busco otros parecidos.',
     loading: 'Buscando productos parecidos…',
-    error: 'No se pudieron cargar las sugerencias. Comprueba la conexión e inténtalo de nuevo en un minuto.',
-    done: list.length ? '' : (filter === 'Todos' ? 'No hay sugerencias nuevas por ahora.' : `Open Food Facts no tiene sugerencias de ${filter} todavía. Prueba con Todos.`),
+    error: `No se pudieron cargar las sugerencias (${s.detail || 'error desconocido'}). Pulsa «Buscar otras» para reintentarlo.`,
+    done: list.length ? `Según tus etiquetas: ${tags}.` : (filter === 'Todos' ? `No encontré productos nuevos para: ${tags}. Puede que Open Food Facts no tenga esa categoría con ese nombre.` : `Open Food Facts no tiene productos de ${filter} para: ${tags}. Prueba con Todos.`),
     idle: '',
   }[s.status] || '';
   $('sug-msg').textContent = msg;
@@ -740,10 +739,44 @@ function renderCompare() {
     row('Mi puntuación', p => scoreOf(p) != null ? `<span class="score big ${best.rating.has(p.id) ? 'bestr' : ''}" aria-label="Puntuación ${fmtScore(scoreOf(p))} de 10">${scoreHtml(scoreOf(p))}</span>` : '<span class="muted">—</span>') +
     row('Mi nota', p => p.note ? `<span class="cnote">${esc(p.note)}</span>` : '<span class="muted">—</span>');
 }
-$('cmp-start').onclick = () => { cmpOn = true; cmpSel.clear(); cmpQ = ''; $('cmp-q').value = ''; filter = 'Todos'; render(); };
-$('cmp-cancel').onclick = () => { cmpOn = false; cmpSel.clear(); render(); };
+$('cmp-start').onclick = () => { tagMode = false; cmpOn = true; cmpSel.clear(); cmpQ = ''; $('cmp-q').value = ''; filter = 'Todos'; render(); };
+$('cmp-cancel').onclick = () => { cmpOn = false; tagMode = false; cmpSel.clear(); render(); };
 $('cmp-q').oninput = e => { cmpQ = e.target.value; render(); };
-$('cmp-go').onclick = () => { renderCompare(); $('cmp-dlg').showModal(); };
+$('cmp-go').onclick = () => { if (tagMode) return openTagSet(); renderCompare(); $('cmp-dlg').showModal(); };
+$('tag-start').onclick = () => { tagMode = true; cmpOn = true; cmpSel.clear(); cmpQ = ''; $('cmp-q').value = ''; render(); };
+function openTagSet() {
+  const n = [...cmpSel].filter(id => items.some(i => i.id === id)).length;
+  $('ts-for').textContent = n === 1 ? 'Se la pondrás a 1 producto.' : `Se la pondrás a los ${n} productos elegidos.`;
+  $('ts-tag').value = '';
+  paintTagSet();
+  $('tagset-dlg').showModal();
+}
+function paintTagSet() {
+  const cur = norm($('ts-tag').value);
+  $('ts-chips').innerHTML = allTags().slice(0, 14).map(t =>
+    `<button type="button" class="tagchip ${norm(t.tag) === cur ? 'on' : ''}" data-t="${esc(t.tag)}">${esc(t.tag)}</button>`).join('');
+  $('tags').innerHTML = allTags().map(t => `<option value="${esc(t.tag)}">`).join('');
+}
+$('ts-tag').oninput = paintTagSet;
+$('ts-chips').onclick = e => { const b = e.target.closest('.tagchip'); if (b) { $('ts-tag').value = b.dataset.t; paintTagSet(); } };
+$('ts-cancel').onclick = () => $('tagset-dlg').close();
+async function applyTag(tag) {
+  const sel = [...cmpSel].map(id => items.find(i => i.id === id)).filter(Boolean);
+  if (!sel.length) return;
+  for (const it of sel) await save({ ...it, tag });
+  items = await loadAll();
+  $('tagset-dlg').close();
+  cmpOn = false; tagMode = false; cmpSel.clear();
+  flashMsg = tag ? `${sel.length === 1 ? '1 producto etiquetado' : sel.length + ' productos etiquetados'} con «${tag}»` : `Etiqueta quitada a ${sel.length === 1 ? '1 producto' : sel.length + ' productos'}`;
+  render();
+  setTimeout(() => { flashMsg = ''; render(); }, 3500);
+}
+$('ts-go').onclick = () => {
+  const t = canonTag($('ts-tag').value);
+  if (!t) { $('ts-err').textContent = 'Escribe una etiqueta o toca una de las de abajo.'; return; }
+  $('ts-err').textContent = ''; applyTag(t);
+};
+$('ts-clear').onclick = () => applyTag('');
 $('cmp-close').onclick = () => $('cmp-dlg').close();
 $('cmp-sort').onclick = e => { const b = e.target.closest('.pill'); if (b) { cmpSort = b.dataset.k; renderCompare(); } };
 
@@ -881,6 +914,7 @@ async function initViewer(id) {
 }
 $('viewer-own').onclick = () => { location.href = location.origin + location.pathname; };
 
+document.addEventListener('click', e => { const b = e.target.closest('button.act'); if (b) setTimeout(() => b.blur(), 0); });
 // --- events ---
 $('add').onclick = () => openForm(null, view === 'want' ? 'want' : 'tried');
 $('f-cancel').onclick = () => $('form-dlg').close();
@@ -897,10 +931,10 @@ $('grid').onclick = e => {
   const c = e.target.closest('.card'); if (!c) return;
   if (!cmpOn) return openDetail(c.dataset.id);
   const id = c.dataset.id;
-  if (cmpSel.has(id)) cmpSel.delete(id); else if (cmpSel.size < 6) cmpSel.add(id);
+  if (cmpSel.has(id)) cmpSel.delete(id); else if (tagMode || cmpSel.size < 6) cmpSel.add(id);
   render();
 };
-for (const d of ['detail', 'form-dlg', 'cmp-dlg', 'share-dlg', 'price-dlg', 'sort-dlg'])
+for (const d of ['detail', 'form-dlg', 'cmp-dlg', 'share-dlg', 'price-dlg', 'sort-dlg', 'tagset-dlg'])
   $(d).addEventListener('click', e => { if (e.target === $(d)) $(d).close(); });
 
 document.fonts && document.fonts.ready.then(() => { segIdx = -1; tabPrev = null; placeSeg(); placeTabInk(); });
