@@ -9,7 +9,7 @@
 <link rel="icon" href="icon.svg">
 <link rel="apple-touch-icon" href="icon.svg">
 <link rel="preload" href="fonts/BarlowCondensed-800.woff2" as="font" type="font/woff2" crossorigin>
-<link rel="stylesheet" href="style.css?v=14">
+<link rel="stylesheet" href="style.css?v=15">
 </head>
 <body>
 <header>
@@ -70,7 +70,7 @@
     <h2 id="d-name"></h2>
     <p id="d-meta" class="muted"></p>
     <div id="d-tag" class="tag big"><b id="d-price"></b><small id="d-unit"></small></div>
-    <p id="d-stars" class="stars"></p>
+    <p id="d-stars" class="score big"></p>
     <div id="d-note" class="note"></div>
     <button id="d-tried" type="button" class="wide" hidden>Ya lo probé</button>
     <div class="row">
@@ -114,8 +114,14 @@
         </div>
       </label>
     </div>
-    <div id="f-rate" class="rate">Valoración
-      <div id="f-stars" class="stars big" role="radiogroup"></div>
+    <div id="f-rate" class="rate">Puntuación de 0 a 10
+      <div class="score-in">
+        <button type="button" id="sc-minus" class="step" aria-label="Bajar medio punto">−</button>
+        <output id="sc-val" for="sc-range">—</output>
+        <button type="button" id="sc-plus" class="step" aria-label="Subir medio punto">+</button>
+      </div>
+      <input id="sc-range" class="unset" type="range" min="0" max="10" step="0.5" value="5" aria-label="Puntuación de 0 a 10">
+      <button type="button" id="sc-clear" class="link" hidden>Quitar puntuación</button>
     </div>
     <label>Nota
       <textarea id="f-note" rows="3" placeholder="Muy salado, sabor fuerte, repetiría…"></textarea>
@@ -128,6 +134,6 @@
 </dialog>
 
 <script src="firebase-config.js"></script>
-<script src="app.js?v=14"></script>
+<script src="app.js?v=15"></script>
 </body>
 </html>
