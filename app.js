@@ -63,7 +63,7 @@ async function initCloud() {
     cloud.auth.onAuthStateChanged(async u => {
       cloud.user = u;
       updateAccount();
-      if (u) { $('auth-dlg').open && $('auth-dlg').close(); await migrateLocal(); await loadShareCfg(); }
+      if (u) { $('auth-dlg').open && $('auth-dlg').close(); await migrateLocal(); await loadShareCfg(); await loadShop(); }
       else { shareCfg = null; if (!sessionStorage.getItem('nocloud')) $('auth-dlg').showModal(); }
       items = await loadAll(); render();
     });
@@ -266,9 +266,11 @@ function renderViewerChrome() {
   if (hideWant !== lastHideWant) { lastHideWant = hideWant; segIdx = -1; }
   document.querySelector('.seg button[data-v="want"]').hidden = hideWant;
   if (hideWant && view === 'want') view = 'tried';
+  document.querySelector('.seg button[data-v="list"]').hidden = v;
+  if (v && view === 'list') view = 'tried';
 }
 function render() {
-  const used = [...new Set(items.map(i => i.store).filter(Boolean))].sort();
+  const used = [...new Set([...items, ...shop].map(i => i.store).filter(Boolean))].sort();
   if (filter !== 'Todos' && !used.includes(filter)) filter = 'Todos';
   $('chips').innerHTML = ['Todos', ...used].map(s =>
     `<button class="tab ${s === filter ? 'on' : ''}" data-s="${esc(s)}" ${s === filter ? 'aria-current="true"' : ''}>${esc(s)}</button>`).join('');
@@ -277,7 +279,7 @@ function render() {
     const on = b.dataset.v === view; b.classList.toggle('on', on); b.setAttribute('aria-pressed', on);
   });
   placeSeg();
-  if (cmpOn && (tagMode ? view === 'tier' : view !== 'tried')) cmpOn = false;
+  if (cmpOn && (tagMode ? view === 'tier' || view === 'list' : view !== 'tried')) cmpOn = false;
   if (!cmpOn) tagMode = false;
   renderViewerChrome();
   const want = view === 'want', tierView = view === 'tier';
@@ -287,7 +289,8 @@ function render() {
   list.sort(SORT_FN[sortKey] || SORT_FN.new);
   if (cmpOn && cmpQ) list = list.filter(i => norm(`${i.name} ${i.brand} ${i.store}`).includes(norm(cmpQ)));
   lastList = list;
-  $('title').textContent = want ? 'Quiero probar' : tierView ? tierName().replace(/^t/, 'T') : (filter === 'Todos' ? 'Mis productos' : filter);
+  const shopTitle = view === 'list' ? (filter === 'Todos' ? 'La compra' : `Compra en ${filter}`) : '';
+  $('title').textContent = shopTitle ? shopTitle : want ? 'Quiero probar' : tierView ? tierName().replace(/^t/, 'T') : (filter === 'Todos' ? 'Mis productos' : filter);
   $('count').textContent = list.length
     ? `${list.length === 1 ? '1 producto' : list.length + ' productos'}${want && filter !== 'Todos' ? ' en ' + filter : ''}${tagFilter != null ? (tagFilter ? ` con la etiqueta ${tagFilter}` : ' sin etiqueta') : ''}` : '';
   if (flashMsg) $('count').textContent = flashMsg;
@@ -311,8 +314,9 @@ function render() {
       ${scoreOf(i) != null ? `<span class="score" aria-label="Puntuación ${fmtScore(scoreOf(i))} de 10">${scoreHtml(scoreOf(i))}</span>` : ''}
     </button>`;
   }).join('');
-  if (tierView) $('grid').innerHTML = '';
-  $('empty').hidden = list.length > 0;
+  const shopView = view === 'list';
+  if (tierView || shopView) $('grid').innerHTML = '';
+  $('empty').hidden = shopView || list.length > 0;
   if (viewer?.error) { $('empty').hidden = false; }
   $('empty').textContent = viewer?.error ? 'Este enlace no está disponible o su dueño ya no comparte la lista.' : viewer?.loading ? 'Abriendo la lista…' : tierView
     ? 'Primero guarda productos en Me gustaron. Luego los ordenas aquí.'
@@ -326,13 +330,13 @@ function render() {
   $('sug').hidden = !want || !!viewer;
   const nTried = items.filter(i => !isWant(i)).length;
   $('cmp-start').hidden = !(view === 'tried' && !cmpOn && nTried >= 2 && !viewer?.error);
-  $('share-btn').hidden = !!viewer || cmpOn;
+  $('share-btn').hidden = !!viewer || cmpOn || shopView;
   $('tag-start').hidden = !((view === 'tried' || view === 'want') && !cmpOn && items.length && !viewer);
-  $('sort-btn').hidden = cmpOn || !!viewer?.error || !items.length;
+  $('sort-btn').hidden = cmpOn || shopView || !!viewer?.error || !items.length;
   $('sort-lbl').textContent = 'Ordenar: ' + SORT_OPTS.find(o => o[0] === sortKey)[2];
   $('sort-btn').classList.toggle('filtered', tagFilter != null);
   $('map-btn').hidden = filter === 'Todos' || cmpOn || !!viewer?.error;
-  $('cmp-q').hidden = !cmpOn; $('cmp-bar').hidden = !cmpOn; $('add').hidden = cmpOn || !!viewer;
+  $('cmp-q').hidden = !cmpOn; $('cmp-bar').hidden = !cmpOn; $('add').hidden = cmpOn || shopView || !!viewer;
   if (cmpOn) {
     $('count').textContent = tagMode ? 'Elige los productos a los que poner etiqueta' : 'Elige de 2 a 6 productos para compararlos';
     const n = [...cmpSel].filter(id => items.some(i => i.id === id)).length;
@@ -342,6 +346,8 @@ function render() {
   }
   paintTagBar();
   $('tiers').hidden = !tierView;
+  $('shop').hidden = !shopView;
+  if (shopView) renderShop();
   if (tierView) renderTiers(list);
   if (want && !viewer) loadSuggestions(false);
 }
@@ -934,6 +940,200 @@ async function initViewer(id) {
 $('viewer-own').onclick = () => { location.href = location.origin + location.pathname; };
 
 document.addEventListener('click', e => { const b = e.target.closest('button.act'); if (b) setTimeout(() => b.blur(), 0); });
+// --- lista de la compra ---
+let shop = [], shopSaveT = null, pickAll = false;
+const SHOP_LS = 'shop1', TRIPS_LS = 'trips1';
+const metaRef = name => cloud.db.collection('users').doc(cloud.user.uid).collection('meta').doc(name);
+function shopLoadLocal() { try { shop = JSON.parse(localStorage.getItem(SHOP_LS) || '[]'); } catch { shop = []; } }
+async function loadShop() {
+  if (useCloud()) {
+    try {
+      const d = await metaRef('list').get(), ci = d.exists ? d.data().items || [] : [];
+      if (ci.length) shop = ci; else { shopLoadLocal(); if (shop.length) saveShop(); }
+    } catch { shopLoadLocal(); }
+  } else shopLoadLocal();
+}
+function saveShop() {
+  clearTimeout(shopSaveT);
+  shopSaveT = setTimeout(async () => {
+    try { localStorage.setItem(SHOP_LS, JSON.stringify(shop)); } catch {}
+    if (useCloud()) { try { await metaRef('list').set({ items: shop, updated: Date.now() }); } catch {} }
+  }, 350);
+}
+const prodOf = it => it.pid ? items.find(p => p.id === it.pid) : null;
+const priceOf = it => { const p = prodOf(it); return p && p.price != null ? p.price : it.price ?? null; };
+const shopStore = it => it.store || NO_STORE;
+function shopStats(list) {
+  let total = 0, cart = 0, missing = 0, done = 0;
+  for (const it of list) {
+    const p = priceOf(it), q = it.qty || 1;
+    if (p == null) missing++; else { total += p * q; if (it.done) cart += p * q; }
+    if (it.done) done++;
+  }
+  return { total, cart, missing, done, n: list.length };
+}
+const money = n => eur(Math.round(n * 100) / 100);
+function addShop(o) {
+  const same = shop.find(x => !x.done && (o.pid ? x.pid === o.pid : !x.pid && norm(x.name) === norm(o.name) && shopStore(x) === shopStore(o)));
+  if (same) same.qty = Math.min(99, (same.qty || 1) + 1);
+  else shop.push({ id: crypto.randomUUID(), created: Date.now(), qty: 1, done: false, ...o });
+  saveShop();
+}
+function shopRows(list) {
+  const row = it => {
+    const p = prodOf(it), img = p ? imgOf(p) : '', pr = priceOf(it), q = it.qty || 1;
+    const sub = [p?.brand, filter === 'Todos' ? '' : ''].filter(Boolean).join('');
+    return `<div class="srow ${it.done ? 'done' : ''}" data-id="${it.id}">
+      <button type="button" class="schk" aria-label="${it.done ? 'Quitar de comprado' : 'Marcar comprado'}" aria-pressed="${!!it.done}">✓</button>
+      ${img ? `<span class="simg"><img src="${esc(img)}" alt=""></span>` : ''}
+      <span class="sname"><b>${esc(it.name)}</b>${sub ? `<small>${esc(sub)}</small>` : ''}${pr != null ? `<small class="sp">${q > 1 ? `${eur(pr)} × ${q} = ` : ''}<em>${money(pr * q)}</em></small>` : ''}</span>
+      <span class="sqty"><button type="button" class="qm" aria-label="Menos">−</button><b>${q}</b><button type="button" class="qp" aria-label="Más">+</button></span>
+      <button type="button" class="sdel" aria-label="Quitar de la lista">✕</button>
+    </div>`;
+  };
+  const sorted = l => [...l].sort((x, y) => (x.done ? 1 : 0) - (y.done ? 1 : 0) || x.created - y.created);
+  if (filter !== 'Todos') return sorted(list).map(row).join('');
+  const groups = new Map();
+  for (const it of list) { const k = shopStore(it); (groups.get(k) || groups.set(k, []).get(k)).push(it); }
+  return [...groups].sort((x, y) => (x[0] === NO_STORE) - (y[0] === NO_STORE) || x[0].localeCompare(y[0], 'es')).map(([k, l]) => {
+    const st = shopStats(l);
+    return `<h3 class="grp">${esc(k)}<small>${st.done} de ${st.n}${st.total ? ` — ${money(st.total)}` : ''}</small></h3>${sorted(l).map(row).join('')}`;
+  }).join('');
+}
+function renderShop() {
+  const list = shop.filter(it => filter === 'Todos' || shopStore(it) === filter);
+  const st = shopStats(list);
+  $('count').textContent = flashMsg || (st.n ? `${st.n - st.done} por comprar` : '');
+  $('shop-prog').hidden = !st.n;
+  $('shop-bar').style.width = st.n ? `${Math.round(100 * st.done / st.n)}%` : '0%';
+  $('shop-prog-txt').textContent = st.n ? (st.done === st.n ? '¡Todo en el carro!' : `${st.done} de ${st.n} en el carro`) : '';
+  $('shop-total').hidden = !st.n;
+  $('shop-total').innerHTML = st.n ? `<span class="tot-l">Total estimado</span><b>${money(st.total)}</b>${st.cart ? `<span class="tot-c">En el carro ${money(st.cart)}</span>` : ''}${st.missing ? `<span class="tot-m">Faltan precios de ${st.missing === 1 ? '1 cosa' : st.missing + ' cosas'}</span>` : ''}` : '';
+  $('shop-list').innerHTML = st.n ? shopRows(list) : `<p class="empty-s">${filter === 'Todos' ? 'La lista está vacía.' : `No hay nada para ${esc(filter)}.`} Escribe algo arriba o toca «Mis productos».</p>`;
+  $('shop-finish').hidden = !st.done; $('shop-clear').hidden = !st.done;
+  $('shop-text').hidden = !st.n;
+  $('shop-in').placeholder = filter === 'Todos' ? 'Añadir: leche, pan, papel de cocina…' : `Añadir en ${filter}: leche, pan…`;
+}
+$('shop-add').onclick = addFromInput;
+$('shop-in').onkeydown = e => { if (e.key === 'Enter') { e.preventDefault(); addFromInput(); } };
+function addFromInput() {
+  const parts = $('shop-in').value.split(',').map(s => s.trim()).filter(Boolean);
+  if (!parts.length) return;
+  for (const name of parts) addShop({ name, store: filter !== 'Todos' ? filter : NO_STORE });
+  $('shop-in').value = ''; render(); $('shop-in').focus();
+}
+$('shop-list').onclick = e => {
+  const r = e.target.closest('.srow'); if (!r) return;
+  const it = shop.find(x => x.id === r.dataset.id); if (!it) return;
+  if (e.target.closest('.schk')) it.done = !it.done;
+  else if (e.target.closest('.qm')) it.qty = Math.max(1, (it.qty || 1) - 1);
+  else if (e.target.closest('.qp')) it.qty = Math.min(99, (it.qty || 1) + 1);
+  else if (e.target.closest('.sdel')) shop = shop.filter(x => x !== it);
+  else return;
+  saveShop(); render();
+};
+// elegir de mis productos
+function paintPick() {
+  const q = norm($('pick-q').value);
+  const only = filter !== 'Todos' && !pickAll;
+  let list = items.filter(p => (!only || p.store === filter) && (!q || norm(`${p.name} ${p.brand} ${p.store} ${p.tag}`).includes(q)))
+    .sort((x, y) => (scoreOf(y) ?? -1) - (scoreOf(x) ?? -1) || y.created - x.created);
+  $('pick-scope').innerHTML = filter !== 'Todos' ? `<button type="button" class="tagchip ${only ? 'on' : ''}" data-all="0">Solo de ${esc(filter)}</button><button type="button" class="tagchip ${only ? '' : 'on'}" data-all="1">Todos los súper</button>` : '';
+  $('pick-grid').innerHTML = list.length ? list.map(p => {
+    const inl = shop.find(x => !x.done && x.pid === p.id), img = imgOf(p);
+    return `<button type="button" class="card pk" data-id="${p.id}">
+      <span class="ph">${img ? `<img src="${esc(img)}" alt="" loading="lazy">` : '<span class="noimg">Sin foto</span>'}${inl ? `<span class="inl">×${inl.qty || 1} en la lista</span>` : ''}</span>
+      <span class="nm">${esc(p.name || p.brand || 'Producto')}</span><span class="br">${esc(p.store)}${p.price != null ? ` — ${eur(p.price)}` : ''}</span></button>`;
+  }).join('') : '<p class="muted">No hay productos que coincidan.</p>';
+}
+$('shop-pick').onclick = () => { pickAll = false; $('pick-q').value = ''; paintPick(); $('pick-dlg').showModal(); };
+$('pick-q').oninput = paintPick;
+$('pick-scope').onclick = e => { const b = e.target.closest('button'); if (b) { pickAll = b.dataset.all === '1'; paintPick(); } };
+$('pick-close').onclick = () => { $('pick-dlg').close(); render(); };
+$('pick-grid').onclick = e => {
+  const c = e.target.closest('.pk'); if (!c) return;
+  const p = items.find(x => x.id === c.dataset.id); if (!p) return;
+  addShop({ pid: p.id, name: p.name || p.brand || 'Producto', store: p.store || NO_STORE, price: p.price ?? null });
+  paintPick();
+};
+// terminar la compra e historial
+async function loadTrips() {
+  if (useCloud()) {
+    try { return (await cloud.db.collection('users').doc(cloud.user.uid).collection('meta').get()).docs.filter(d => d.id.startsWith('trip_')).map(d => d.data()).sort((x, y) => y.date - x.date); } catch {}
+  }
+  try { return JSON.parse(localStorage.getItem(TRIPS_LS) || '[]').sort((x, y) => y.date - x.date); } catch { return []; }
+}
+async function saveTrip(t) {
+  if (useCloud()) { try { await metaRef('trip_' + t.id).set(t); return; } catch {} }
+  try { const l = JSON.parse(localStorage.getItem(TRIPS_LS) || '[]'); l.push(t); localStorage.setItem(TRIPS_LS, JSON.stringify(l)); } catch {}
+}
+async function deleteTrip(id) {
+  if (useCloud()) { try { await metaRef('trip_' + id).delete(); } catch {} }
+  try { const l = JSON.parse(localStorage.getItem(TRIPS_LS) || '[]').filter(t => t.id !== id); localStorage.setItem(TRIPS_LS, JSON.stringify(l)); } catch {}
+}
+const doneInView = () => shop.filter(it => it.done && (filter === 'Todos' || shopStore(it) === filter));
+$('shop-finish').onclick = () => {
+  const d = doneInView(), st = shopStats(d);
+  $('fin-txt').textContent = d.length ? `Vas a guardar ${d.length === 1 ? '1 producto comprado' : d.length + ' productos comprados'}${st.total ? ` por ${money(st.total)}` : ''}. Lo que no hayas marcado se queda en la lista.` : 'Marca primero lo que hayas metido en el carro.';
+  $('fin-list').textContent = d.map(it => `${it.name}${(it.qty || 1) > 1 ? ' ×' + it.qty : ''}`).join(', ');
+  $('fin-go').disabled = !d.length;
+  $('fin-dlg').showModal();
+};
+$('fin-cancel').onclick = () => $('fin-dlg').close();
+$('fin-go').onclick = async () => {
+  const d = doneInView(), st = shopStats(d);
+  await saveTrip({ id: String(Date.now()), date: Date.now(), total: Math.round(st.total * 100) / 100, missing: st.missing,
+    items: d.map(it => ({ name: it.name, store: shopStore(it), qty: it.qty || 1, price: priceOf(it), pid: it.pid || null })) });
+  const ids = new Set(d.map(x => x.id)); shop = shop.filter(x => !ids.has(x.id));
+  saveShop(); $('fin-dlg').close(); render();
+  flashMsg = 'Compra guardada en el historial'; render(); setTimeout(() => { flashMsg = ''; render(); }, 3000);
+};
+$('shop-clear').onclick = () => {
+  const d = doneInView(); if (!d.length) return;
+  if (!confirm(`¿Quitar de la lista los ${d.length} comprados, sin guardarlos en el historial?`)) return;
+  const ids = new Set(d.map(x => x.id)); shop = shop.filter(x => !ids.has(x.id)); saveShop(); render();
+};
+async function paintHist() {
+  const trips = await loadTrips();
+  $('hist-list').innerHTML = trips.length ? trips.map(t => {
+    const stores = [...new Set(t.items.map(i => i.store))].join(', ');
+    return `<div class="trip" data-id="${t.id}"><div class="trip-h"><b>${fmtDate(t.date)}</b><span>${t.total ? money(t.total) : ''}</span></div>
+      <p class="muted">${t.items.length === 1 ? '1 producto' : t.items.length + ' productos'}${stores ? ` en ${esc(stores)}` : ''}</p>
+      <p class="trip-i">${esc(t.items.map(i => i.name + (i.qty > 1 ? ' ×' + i.qty : '')).join(', '))}</p>
+      <div class="row"><button type="button" class="rebuy">Volver a comprar</button><button type="button" class="deltrip ghost">Borrar</button></div></div>`;
+  }).join('') : '<p class="muted">Aún no has guardado ninguna compra. Marca lo que compres y pulsa «Terminar compra».</p>';
+}
+$('shop-hist').onclick = async () => { await paintHist(); $('hist-dlg').showModal(); };
+$('hist-close').onclick = () => $('hist-dlg').close();
+$('hist-list').onclick = async e => {
+  const t = e.target.closest('.trip'); if (!t) return;
+  if (e.target.closest('.deltrip')) { if (confirm('¿Borrar esta compra del historial?')) { await deleteTrip(t.dataset.id); paintHist(); } return; }
+  if (!e.target.closest('.rebuy')) return;
+  const trip = (await loadTrips()).find(x => x.id === t.dataset.id); if (!trip) return;
+  for (const i of trip.items) {
+    const same = shop.find(x => !x.done && (i.pid ? x.pid === i.pid : !x.pid && norm(x.name) === norm(i.name) && shopStore(x) === i.store));
+    if (same) same.qty = Math.min(99, (same.qty || 1) + i.qty);
+    else shop.push({ id: crypto.randomUUID(), created: Date.now(), qty: i.qty, done: false, pid: i.pid || undefined, name: i.name, store: i.store === NO_STORE ? '' : i.store, price: i.price ?? null });
+  }
+  saveShop(); filter = 'Todos'; $('hist-dlg').close(); render();
+};
+// compartir como texto
+$('shop-text').onclick = async () => {
+  const list = shop.filter(it => !it.done && (filter === 'Todos' || shopStore(it) === filter));
+  if (!list.length) { alert('No queda nada por comprar en esta lista.'); return; }
+  const line = it => `☐ ${it.name}${(it.qty || 1) > 1 ? ' ×' + it.qty : ''}`;
+  let txt = `Lista de la compra${filter !== 'Todos' ? ' (' + filter + ')' : ''}\n`;
+  if (filter === 'Todos') {
+    const g = new Map(); for (const it of list) { const k = shopStore(it); (g.get(k) || g.set(k, []).get(k)).push(it); }
+    txt += [...g].map(([k, l]) => `\n${k}\n${l.map(line).join('\n')}`).join('\n');
+  } else txt += '\n' + list.map(line).join('\n');
+  const st = shopStats(list); if (st.total) txt += `\n\nTotal estimado: ${money(st.total)}`;
+  if (navigator.share) { try { await navigator.share({ title: 'Lista de la compra', text: txt }); return; } catch (e) { if (e.name === 'AbortError') return; } }
+  try { await navigator.clipboard.writeText(txt); flashMsg = 'Lista copiada: pégala donde quieras'; }
+  catch { prompt('Copia la lista:', txt); return; }
+  render(); setTimeout(() => { flashMsg = ''; render(); }, 3000);
+};
+
 // --- events ---
 $('add').onclick = () => openForm(null, view === 'want' ? 'want' : 'tried');
 $('f-cancel').onclick = () => $('form-dlg').close();
@@ -953,11 +1153,11 @@ $('grid').onclick = e => {
   if (cmpSel.has(id)) cmpSel.delete(id); else if (tagMode || cmpSel.size < 6) cmpSel.add(id);
   render();
 };
-for (const d of ['detail', 'form-dlg', 'cmp-dlg', 'share-dlg', 'price-dlg', 'sort-dlg', 'tagset-dlg'])
+for (const d of ['detail', 'form-dlg', 'cmp-dlg', 'share-dlg', 'price-dlg', 'sort-dlg', 'tagset-dlg', 'pick-dlg', 'fin-dlg', 'hist-dlg'])
   $(d).addEventListener('click', e => { if (e.target === $(d)) $(d).close(); });
 
 document.fonts && document.fonts.ready.then(() => { segIdx = -1; tabPrev = null; placeSeg(); placeTabInk(); });
 const shareParam = new URLSearchParams(location.search).get('s');
 if (shareParam) initViewer(shareParam);
-else localAll().then(r => { items = r; render(); }).then(initCloud).then(ok => { if (!ok) $('account').hidden = true; });
+else { shopLoadLocal(); localAll().then(r => { items = r; render(); }).then(initCloud).then(ok => { if (!ok) $('account').hidden = true; }); }
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});

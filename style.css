@@ -230,3 +230,49 @@ button.tagchip{padding:7px 14px!important;border-radius:999px!important;backgrou
 button.tagchip.on{background:var(--ink)!important;color:var(--bg)!important;box-shadow:none!important}
 button.tagchip.pickall{background:var(--tag)!important;color:var(--tag-ink)!important;box-shadow:none!important;font-weight:700!important}
 button.tagchip:active{transform:scale(.94)}
+
+/* lista de la compra */
+.seg button{font-size:.88rem!important;padding-left:4px!important;padding-right:4px!important}
+.shop{max-width:720px;margin:0 auto;padding:16px}
+.shop-add{display:flex;gap:8px}
+.shop-add input{margin:0;flex:1}
+.shop-add button{padding:0 18px!important}
+#shop-pick{margin-top:10px}
+.prog{display:flex;align-items:center;gap:12px;margin:18px 0 6px}
+.bar{flex:1;height:14px;border-radius:999px;background:var(--line);overflow:hidden;box-shadow:inset 0 0 0 1.5px var(--ink)}
+.bar i{display:block;height:100%;width:0;background:var(--tag);border-right:2px solid var(--ink);transition:width .45s cubic-bezier(.3,1.4,.5,1)}
+.prog span{font:600 1.05rem var(--disp);white-space:nowrap}
+.shop-total{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 14px;margin:6px 0 10px}
+.shop-total b{font:800 2.4rem/1 var(--disp)}
+.tot-l{font:600 1.1rem var(--disp);color:var(--mute)}
+.tot-c{font-size:.9rem}.tot-m{font-size:.85rem;color:var(--red);width:100%}
+.shop-list .grp{grid-column:auto;margin:18px 0 6px;padding-top:12px}
+.shop-list .grp:first-child{margin-top:4px}
+.empty-s{color:var(--mute);text-align:center;padding:26px 8px}
+.srow{display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--line)}
+.srow.done .sname{text-decoration:line-through;opacity:.5}
+.srow.done .simg{opacity:.5}
+button.schk{flex:none;width:34px;height:34px;padding:0!important;border-radius:50%!important;background:transparent!important;color:transparent!important;box-shadow:inset 0 0 0 2px var(--ink)!important;font-weight:800;transition:transform .2s cubic-bezier(.3,1.6,.5,1)}
+.srow.done button.schk{background:var(--tag)!important;color:var(--tag-ink)!important}
+button.schk:active{transform:scale(.88)}
+.simg{flex:none;width:46px;height:46px;border-radius:10px;overflow:hidden;background:var(--line)}
+.simg img{width:100%;height:100%;object-fit:cover;display:block}
+.sname{flex:1;min-width:0;display:flex;flex-direction:column;line-height:1.2}
+.sname b{font-weight:600;overflow-wrap:anywhere}
+.sname small{color:var(--mute);font-size:.8rem}
+.sname .sp em{font:800 1.05rem var(--disp);font-style:normal;color:var(--ink)}
+.sqty{flex:none;display:flex;align-items:center;gap:2px}
+.sqty b{min-width:1.6ch;text-align:center;font:800 1.2rem var(--disp)}
+.sqty button{width:30px;height:30px;padding:0!important;border-radius:50%!important;background:transparent!important;color:var(--ink)!important;box-shadow:inset 0 0 0 1.5px var(--line)!important;font-size:1.1rem;line-height:1}
+button.sdel{flex:none;width:28px;height:34px;padding:0!important;background:none!important;color:var(--mute)!important;font-size:.95rem}
+.shop-actions{display:flex;flex-direction:column;gap:10px;margin-top:22px}
+.shop-actions>button:first-child{width:100%}
+.pick-scope{margin:10px 0}
+.pick-grid{padding:12px 0!important;gap:18px 10px!important}
+.pk{cursor:pointer}
+.inl{position:absolute;top:8px;left:8px;padding:3px 8px;border-radius:999px;background:var(--ink);color:var(--bg);font:600 .8rem var(--disp)}
+.trip{padding:14px 0;border-bottom:1px solid var(--line)}
+.trip-h{display:flex;justify-content:space-between;align-items:baseline}
+.trip-h b{font:800 1.3rem var(--disp)}.trip-h span{font:800 1.3rem var(--disp)}
+.trip p{margin:4px 0}.trip-i{font-size:.9rem}
+.trip .row{margin-top:10px}
