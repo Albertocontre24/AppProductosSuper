@@ -1,7 +1,7 @@
 'use strict';
 const $ = id => document.getElementById(id);
 const DEFAULT_STORES = ['Lidl', 'Mercadona', 'Carrefour', 'Dia', 'Aldi', 'Alcampo'];
-let items = [], filter = 'Todos', editing = null, photoData = null, rating = 0, view = 'tried', formStatus = 'tried';
+let items = [], filter = 'Todos', editing = null, photoData = null, rating = 0, view = 'tried', formStatus = 'tried', selTier = null;
 
 // --- IndexedDB ---
 const dbp = new Promise((res, rej) => {
@@ -136,10 +136,10 @@ function render() {
   document.querySelectorAll('.seg button').forEach(b => {
     const on = b.dataset.v === view; b.classList.toggle('on', on); b.setAttribute('aria-pressed', on);
   });
-  const want = view === 'want';
+  const want = view === 'want', tierView = view === 'tier';
   const list = items.filter(i => isWant(i) === want && (filter === 'Todos' || i.store === filter))
     .sort((a, b) => b.created - a.created);
-  $('title').textContent = want ? 'Quiero probar' : (filter === 'Todos' ? 'Mis productos' : filter);
+  $('title').textContent = want ? 'Quiero probar' : tierView ? (filter === 'Todos' ? 'Tierlist' : `Tierlist de ${filter}`) : (filter === 'Todos' ? 'Mis productos' : filter);
   $('count').textContent = list.length
     ? `${list.length === 1 ? '1 producto' : list.length + ' productos'}${want && filter !== 'Todos' ? ' en ' + filter : ''}` : '';
   $('grid').innerHTML = list.map(i => {
@@ -154,14 +154,19 @@ function render() {
       ${i.rating ? `<span class="stars" aria-label="${i.rating} de 5">${stars(i.rating)}</span>` : ''}
     </button>`;
   }).join('');
+  if (tierView) $('grid').innerHTML = '';
   $('empty').hidden = list.length > 0;
-  $('empty').textContent = want
+  $('empty').textContent = tierView
+    ? 'Primero guarda productos en Me gustaron. Luego los ordenas aquí.'
+    : want
     ? 'Aquí apuntas lo que quieres probar. Pulsa + y hazle una foto cuando lo veas en el súper.'
     : items.some(i => !isWant(i))
       ? `Todavía no hay nada en ${filter}. Pulsa + y hazle una foto al primero.`
       : 'Aún no hay productos. Pulsa + y hazle una foto al primero que te guste.';
   $('stores').innerHTML = stores().map(s => `<option value="${esc(s)}">`).join('');
   $('sug').hidden = !want;
+  $('tiers').hidden = !tierView;
+  if (tierView) renderTiers(list);
   if (want) loadSuggestions(false);
 }
 function esc(s) { return String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
@@ -219,7 +224,7 @@ $('form').onsubmit = async e => {
   const want = formStatus === 'want';
   const o = {
     id: editing?.id || crypto.randomUUID(), created: editing?.created || Date.now(), status: formStatus,
-    photo: photoData, photoUrl: editing?.photoUrl || null, cat: editing?.cat,
+    photo: photoData, photoUrl: editing?.photoUrl || null, cat: editing?.cat, tier: editing?.tier ?? null,
     store: $('f-store').value.trim(), brand: $('f-brand').value.trim(),
     name: $('f-name').value.trim(), price: num($('f-price').value),
     unitPrice: num($('f-unitprice').value), unit: $('f-unit').value, note: $('f-note').value.trim(),
@@ -344,8 +349,88 @@ $('sug-list').onclick = async e => {
   items = await loadAll(); render();
 };
 
+
+// --- tierlist ---
+const TIERS = [['S', '#ef5350'], ['A', '#ff9f43'], ['B', '#ffd23f'], ['C', '#7bc96f'], ['D', '#4fa3e0']];
+const initials = i => (i.name || i.brand || '?').trim().slice(0, 2).toUpperCase();
+function renderTiers(list) {
+  if (selTier && !list.some(i => i.id === selTier)) selTier = null;
+  const chip = i => {
+    const img = imgOf(i), n = i.name || i.brand || 'Producto';
+    return `<button class="tchip ${i.id === selTier ? 'sel' : ''}" data-id="${i.id}" draggable="true" title="${esc(n)}" aria-label="${esc(n)}" aria-pressed="${i.id === selTier}">${img ? `<img src="${esc(img)}" alt="" draggable="false">` : `<span>${esc(initials(i))}</span>`}</button>`;
+  };
+  const row = (t, color, label) => `<div class="trow" data-t="${t}"><div class="tlabel" style="background:${color}">${label}</div><div class="tcells">${list.filter(i => (i.tier || '') === t).map(chip).join('')}</div></div>`;
+  $('tier-rows').innerHTML = TIERS.map(([t, c]) => row(t, c, t)).join('') + row('', 'var(--line)', '?');
+  const sel = list.find(i => i.id === selTier);
+  $('tier-hint').textContent = sel ? `«${sel.name || sel.brand}»: toca la fila donde ponerlo.` : list.length ? 'Toca un producto y luego la fila donde ponerlo. La fila ? lo deja sin clasificar.' : '';
+  $('tier-save').hidden = !list.length;
+}
+async function placeTier(id, t) {
+  const it = items.find(x => x.id === id); if (!it) return;
+  it.tier = t || null; selTier = null;
+  render();
+  try { await save(it); } catch {}
+}
+$('tiers').onclick = e => {
+  const c = e.target.closest('.tchip');
+  if (c) { selTier = selTier === c.dataset.id ? null : c.dataset.id; return render(); }
+  const r = e.target.closest('.trow');
+  if (r && selTier) placeTier(selTier, r.dataset.t);
+};
+$('tiers').addEventListener('dragstart', e => { const c = e.target.closest('.tchip'); if (c) e.dataTransfer.setData('text/plain', c.dataset.id); });
+$('tiers').addEventListener('dragover', e => { if (e.target.closest('.trow')) e.preventDefault(); });
+$('tiers').addEventListener('drop', e => {
+  const r = e.target.closest('.trow'); if (!r) return;
+  e.preventDefault(); placeTier(e.dataTransfer.getData('text/plain'), r.dataset.t);
+});
+
+function loadImg(src) {
+  return new Promise(res => { const im = new Image(); im.onload = () => res(im); im.onerror = () => res(null); im.src = src; });
+}
+$('tier-save').onclick = async () => {
+  const list = items.filter(i => !isWant(i) && (filter === 'Todos' || i.store === filter));
+  const W = 1080, LBL = 150, S = 130, G = 10, per = Math.floor((W - LBL - G) / (S + G));
+  const rows = TIERS.map(([t, c]) => [t, c, list.filter(i => i.tier === t)]);
+  const heights = rows.map(([, , l]) => Math.max(150, Math.ceil(l.length / per) * (S + G) + G));
+  const HEAD = 130, H = HEAD + heights.reduce((a, b) => a + b, 0) + 24;
+  try { await document.fonts.load('800 80px "Barlow Condensed"'); } catch {}
+  const cv = document.createElement('canvas'); cv.width = W; cv.height = H;
+  const x = cv.getContext('2d');
+  x.fillStyle = '#131a22'; x.fillRect(0, 0, W, H);
+  x.fillStyle = '#fff'; x.font = '800 72px "Barlow Condensed", sans-serif'; x.textBaseline = 'middle';
+  x.fillText(filter === 'Todos' ? 'Mi tierlist del súper' : `Mi tierlist de ${filter}`, 30, HEAD / 2);
+  let y = HEAD;
+  for (let r = 0; r < rows.length; r++) {
+    const [t, c, l] = rows[r], h = heights[r];
+    x.fillStyle = '#1c242d'; x.fillRect(0, y, W, h - 4);
+    x.fillStyle = c; x.fillRect(0, y, LBL, h - 4);
+    x.fillStyle = '#131a22'; x.font = '800 90px "Barlow Condensed", sans-serif'; x.textAlign = 'center';
+    x.fillText(t, LBL / 2, y + (h - 4) / 2); x.textAlign = 'left';
+    for (let k = 0; k < l.length; k++) {
+      const px = LBL + G + (k % per) * (S + G), py = y + G + Math.floor(k / per) * (S + G);
+      const im = l[k].photo ? await loadImg(l[k].photo) : null;
+      if (im) {
+        const m = Math.min(im.width, im.height);
+        x.drawImage(im, (im.width - m) / 2, (im.height - m) / 2, m, m, px, py, S, S);
+      } else {
+        x.fillStyle = '#3a444f'; x.fillRect(px, py, S, S);
+        x.fillStyle = '#fff'; x.font = '800 48px "Barlow Condensed", sans-serif'; x.textAlign = 'center';
+        x.fillText(initials(l[k]), px + S / 2, py + S / 2); x.textAlign = 'left';
+      }
+    }
+    y += h;
+  }
+  const blob = await new Promise(res => cv.toBlob(res, 'image/png'));
+  const file = new File([blob], 'tierlist.png', { type: 'image/png' });
+  if (navigator.canShare && navigator.canShare({ files: [file] })) {
+    try { await navigator.share({ files: [file], title: 'Mi tierlist del súper' }); return; } catch (e) { if (e.name === 'AbortError') return; }
+  }
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'tierlist.png'; a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+};
+
 // --- events ---
-$('add').onclick = () => openForm(null, view);
+$('add').onclick = () => openForm(null, view === 'want' ? 'want' : 'tried');
 $('f-cancel').onclick = () => $('form-dlg').close();
 $('d-close').onclick = () => $('detail').close();
 $('d-edit').onclick = () => { const i = editing; $('detail').close(); openForm(i); };

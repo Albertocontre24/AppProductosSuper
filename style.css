@@ -94,3 +94,14 @@ button.addwant:disabled{opacity:.5}
 button.wide{width:100%;margin-top:14px}
 .seg button{padding:8px 10px!important;border-radius:9px!important;background:none!important;color:var(--mute)!important;box-shadow:none!important}
 .seg button.on{background:var(--surface)!important;color:var(--ink)!important;box-shadow:0 1px 3px rgba(0,0,0,.18)!important}
+
+.seg{max-width:440px}.seg button{font-size:.95rem!important}
+.tiers{max-width:720px;margin:0 auto;padding:16px}
+.trow{display:flex;min-height:76px;margin-bottom:6px;background:var(--surface);border-radius:10px;overflow:hidden}
+.tlabel{flex:none;width:60px;display:grid;place-items:center;font:800 2.2rem var(--disp);color:#131a22}
+.tcells{flex:1;display:flex;flex-wrap:wrap;gap:6px;padding:6px;align-content:flex-start;min-width:0}
+.tchip{width:58px;height:58px;padding:0!important;border:0;border-radius:8px!important;overflow:hidden;background:var(--line)!important;color:var(--ink)!important;font:800 1.1rem var(--disp)!important;touch-action:manipulation}
+.tchip img{width:100%;height:100%;object-fit:cover;display:block}
+.tchip.sel{outline:3px solid var(--ink);outline-offset:2px}
+#tier-hint{min-height:1.4em;margin:0 0 10px}
+#tier-save{display:block;margin:16px auto 8px}

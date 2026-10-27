@@ -9,19 +9,26 @@
 <link rel="icon" href="icon.svg">
 <link rel="apple-touch-icon" href="icon.svg">
 <link rel="preload" href="fonts/BarlowCondensed-800.woff2" as="font" type="font/woff2" crossorigin>
-<link rel="stylesheet" href="style.css?v=8">
+<link rel="stylesheet" href="style.css?v=9">
 </head>
 <body>
 <header>
   <div class="top"><span class="brand">Mi súper</span><button id="account" class="ghost small" hidden></button></div>
   <h1 id="title">Mis productos</h1>
   <p id="count" class="count"></p>
-  <div class="seg" role="group" aria-label="Lista"><button data-v="tried">Me gustaron</button><button data-v="want">Quiero probar</button></div>
+  <div class="seg" role="group" aria-label="Lista"><button data-v="tried">Me gustaron</button><button data-v="want">Quiero probar</button><button data-v="tier">Tierlist</button></div>
   <nav id="chips" class="tabs" aria-label="Supermercados"></nav>
 </header>
 
 <main id="grid" class="grid"></main>
 <p id="empty" class="empty" hidden></p>
+
+<section id="tiers" class="tiers" hidden>
+  <p id="tier-hint" class="muted"></p>
+  <div id="tier-rows"></div>
+  <button id="tier-save" class="ghost" type="button" hidden>Guardar como imagen</button>
+  <p class="credit">Los productos sin foto salen con sus iniciales en la imagen.</p>
+</section>
 
 <section id="sug" class="sug-sec" hidden>
   <h2>Parecidos a lo que te gusta</h2>
@@ -104,6 +111,6 @@
 </dialog>
 
 <script src="firebase-config.js"></script>
-<script src="app.js?v=8"></script>
+<script src="app.js?v=9"></script>
 </body>
 </html>
