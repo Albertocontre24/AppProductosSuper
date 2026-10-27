@@ -529,12 +529,30 @@ function knownNames() {
   k.delete('');
   return k;
 }
-async function offSearch(param, term) {
-  const q = `${OFF}/api/v2/search?${param}=${encodeURIComponent(term)}${filter !== 'Todos' ? '&stores_tags=' + storeTag(filter) : ''}&sort_by=popularity_key&page_size=30&fields=code,product_name,brands,image_front_small_url,stores`;
-  const r = await fetch(q);
-  if (!r.ok) { const e = new Error('http'); e.status = r.status; throw e; }
-  return (await r.json()).products || [];
+const first = v => Array.isArray(v) ? String(v[0] || '') : String(v || '');
+const normProd = p => ({
+  code: String(p.code || ''), name: first(p.product_name).trim(), brand: first(p.brands).split(',')[0].trim(),
+  img: [p.image_front_small_url, p.image_small_url, p.image_front_url, p.image_url].map(first).find(u => /^https?:/.test(u)) || '',
+  store: first(p.stores).split(',')[0].trim(),
+});
+const fail = (src, status) => { const e = new Error(src); e.src = src; e.status = status; return e; };
+// 1) buscador nuevo de Open Food Facts (búsqueda por texto, pensado para webs)
+async function saSearch(term) {
+  const q = `"${term}" countries_tags:"en:spain"${filter !== 'Todos' ? ` stores_tags:"${storeTag(filter)}"` : ''}`;
+  const url = `https://search.openfoodfacts.org/search?q=${encodeURIComponent(q)}&langs=es,en&page_size=30&fields=code,product_name,brands,image_front_small_url,image_small_url,image_front_url,stores`;
+  let r; try { r = await fetch(url); } catch { throw fail('buscador nuevo', 0); }
+  if (!r.ok) throw fail('buscador nuevo', r.status);
+  return ((await r.json()).hits || []).map(normProd);
 }
+// 2) filtro por categoría de la API clásica
+async function offSearch(param, term) {
+  const url = `${OFF}/api/v2/search?${param}=${encodeURIComponent(term)}${filter !== 'Todos' ? '&stores_tags=' + storeTag(filter) : ''}&sort_by=popularity_key&page_size=30&fields=code,product_name,brands,image_front_small_url,stores`;
+  let r; try { r = await fetch(url); } catch { throw fail('API clásica', 0); }
+  if (!r.ok) throw fail('API clásica', r.status);
+  return ((await r.json()).products || []).map(normProd);
+}
+const errText = es => [...new Map(es.map(e => [e.src, e])).values()]
+  .map(e => `${e.src}: ${e.status ? 'error ' + e.status : 'sin respuesta (sin conexión o bloqueado por el navegador)'}`).join('; ');
 async function loadSuggestions(force) {
   const liked = items.filter(i => !isWant(i) && scoreOf(i) >= 8)
     .sort((a, b) => scoreOf(b) - scoreOf(a) || b.created - a.created);
@@ -550,27 +568,28 @@ async function loadSuggestions(force) {
   if (cached) { sugState = { key, status: 'done', list: cached, seeds }; return paintSug(); }
   if (sugBusy) return;
   sugBusy = true; sugState = { key, status: 'loading', list: [], seeds }; paintSug();
+  try {
   const known = knownNames(), seen = new Set(), list = [];
-  let failed = 0, lastErr = null;
+  let failed = 0; const errs = [];
   for (const sd of seeds) {
-    try {
-      await sleep(600);
-      let prods = await offSearch('categories_tags_es', sd.tag);
-      if (!prods.length) { await sleep(600); prods = await offSearch('categories_tags_en', sd.tag); }
-      let n = 0;
-      for (const p of prods) {
-        const name = (p.product_name || '').trim(), brand = (p.brands || '').split(',')[0].trim();
-        if (!name || !p.image_front_small_url || seen.has(p.code)) continue;
-        if (known.has(norm(name)) || known.has(norm(`${brand} ${name}`))) continue;
-        seen.add(p.code);
-        list.push({ code: p.code, name, brand, img: p.image_front_small_url, store: (p.stores || '').split(',')[0].trim(), from: sd.from });
-        if (++n >= 6) break;
-      }
-    } catch (e) { failed++; lastErr = e; }
+    let prods = null;
+    for (const [fn, label] of [[() => saSearch(sd.tag)], [() => offSearch('categories_tags_es', sd.tag)], [() => offSearch('categories_tags_en', sd.tag)]]) {
+      try { await sleep(500); const r = await fn(); prods = r; if (r.length) break; } catch (e) { errs.push(e); }
+    }
+    if (prods === null) { failed++; continue; }
+    let n = 0;
+    for (const p of prods) {
+      if (!p.name || !p.code || seen.has(p.code)) continue;
+      if (known.has(norm(p.name)) || known.has(norm(`${p.brand} ${p.name}`))) continue;
+      seen.add(p.code);
+      list.push({ code: p.code, name: p.name, brand: p.brand, img: p.img, store: p.store, from: sd.from });
+      if (++n >= 6) break;
+    }
   }
   if (failed === seeds.length) {
-    sugState = { key, status: 'error', list: [], seeds, detail: lastErr && lastErr.status ? `Open Food Facts respondió con el error ${lastErr.status}` : 'no hay conexión o el navegador bloqueó la petición' };
+    sugState = { key, status: 'error', list: [], seeds, detail: errText(errs) };
   } else { writeCache(key, list); sugState = { key, status: 'done', list, seeds }; }
+  } catch (e) { sugState = { key, status: 'error', list: [], seeds, detail: 'fallo inesperado: ' + e.message }; }
   sugBusy = false; paintSug();
 }
 function paintSug() {
@@ -590,7 +609,7 @@ function paintSug() {
   $('sug-refresh').hidden = !['done', 'error'].includes(s.status);
   $('sug-list').innerHTML = list.map(x => `
     <div class="card sug">
-      <span class="ph"><img src="${esc(x.img)}" alt="" loading="lazy"></span>
+      <span class="ph">${x.img ? `<img src="${esc(x.img)}" alt="" loading="lazy">` : '<span class="noimg">Sin foto</span>'}</span>
       <span class="nm">${esc(x.name)}</span>
       ${x.brand ? `<span class="br">${esc(x.brand)}</span>` : ''}
       <span class="why">Parecido a ${esc(x.from)}</span>
