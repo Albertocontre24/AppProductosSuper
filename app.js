@@ -1,7 +1,7 @@
 'use strict';
 const $ = id => document.getElementById(id);
 const DEFAULT_STORES = ['Lidl', 'Mercadona', 'Carrefour', 'Dia', 'Aldi', 'Alcampo'];
-let items = [], filter = 'Todos', editing = null, photoData = null, rating = 0, view = 'tried', formStatus = 'tried', selTier = null;
+let items = [], filter = 'Todos', editing = null, photoData = null, rating = 0, view = 'tried', formStatus = 'tried', selTier = null, cmpOn = false, cmpSel = new Set(), cmpQ = '', cmpSort = 'none';
 
 // --- IndexedDB ---
 const dbp = new Promise((res, rej) => {
@@ -172,18 +172,22 @@ function render() {
     const on = b.dataset.v === view; b.classList.toggle('on', on); b.setAttribute('aria-pressed', on);
   });
   placeSeg();
+  if (view !== 'tried') cmpOn = false;
   const want = view === 'want', tierView = view === 'tier';
-  const list = items.filter(i => isWant(i) === want && (filter === 'Todos' || i.store === filter))
+  let list = items.filter(i => isWant(i) === want && (filter === 'Todos' || i.store === filter))
     .sort((a, b) => b.created - a.created);
+  if (cmpOn && cmpQ) list = list.filter(i => norm(`${i.name} ${i.brand} ${i.store}`).includes(norm(cmpQ)));
   $('title').textContent = want ? 'Quiero probar' : tierView ? (filter === 'Todos' ? 'Tierlist' : `Tierlist de ${filter}`) : (filter === 'Todos' ? 'Mis productos' : filter);
   $('count').textContent = list.length
     ? `${list.length === 1 ? '1 producto' : list.length + ' productos'}${want && filter !== 'Todos' ? ' en ' + filter : ''}` : '';
   $('grid').innerHTML = list.map(i => {
     const sub2 = filter === 'Todos' ? (i.brand ? `${i.brand} en ${i.store}` : `En ${i.store}`) : i.brand;
     const img = imgOf(i);
+    const picked = cmpOn && cmpSel.has(i.id);
     return `
-    <button class="card" data-id="${i.id}">
+    <button class="card ${cmpOn ? 'pick' : ''} ${picked ? 'picked' : ''}" data-id="${i.id}" ${cmpOn ? `aria-pressed="${picked}"` : ''}>
       <span class="ph">${img ? `<img src="${esc(img)}" alt="" loading="lazy">` : '<span class="noimg">Sin foto</span>'}
+        ${cmpOn ? '<span class="chk" aria-hidden="true">✓</span>' : ''}
         ${i.price != null ? `<span class="tag"><b>${priceNum(i.price)}<em>€</em></b>${unitLine(i) ? `<small>${unitLine(i)}</small>` : ''}</span>` : ''}</span>
       <span class="nm">${esc(i.name || i.brand || 'Producto')}</span>
       ${sub2 ? `<span class="br">${esc(sub2)}</span>` : ''}
@@ -201,6 +205,16 @@ function render() {
       : 'Aún no hay productos. Pulsa + y hazle una foto al primero que te guste.';
   $('stores').innerHTML = stores().map(s => `<option value="${esc(s)}">`).join('');
   $('sug').hidden = !want;
+  const nTried = items.filter(i => !isWant(i)).length;
+  $('cmp-start').hidden = !(view === 'tried' && !cmpOn && nTried >= 2);
+  $('map-btn').hidden = filter === 'Todos' || cmpOn;
+  $('cmp-q').hidden = !cmpOn; $('cmp-bar').hidden = !cmpOn; $('add').hidden = cmpOn;
+  if (cmpOn) {
+    $('count').textContent = 'Elige de 2 a 6 productos para compararlos';
+    const n = [...cmpSel].filter(id => items.some(i => i.id === id)).length;
+    $('cmp-n').textContent = n === 1 ? '1 elegido' : `${n} elegidos`;
+    $('cmp-go').disabled = n < 2;
+  }
   $('tiers').hidden = !tierView;
   if (tierView) renderTiers(list);
   if (want) loadSuggestions(false);
@@ -470,6 +484,81 @@ $('tier-save').onclick = async () => {
   setTimeout(() => URL.revokeObjectURL(a.href), 4000);
 };
 
+
+// --- comparador ---
+const SORTS = [['none', 'Orden elegido'], ['price', 'Precio'], ['unit', 'Por kg o litro'], ['rating', 'Puntuación']];
+const pname = p => p.name || p.brand || 'Producto';
+function bestSets(ps) {
+  const out = { price: new Set(), unit: new Set(), rating: new Set() };
+  const pick = (g, key, dir, set) => {
+    if (g.length < 2) return;
+    const v = g.map(p => p[key]), m = dir < 0 ? Math.min(...v) : Math.max(...v);
+    if (Math.min(...v) === Math.max(...v)) return;
+    g.filter(p => p[key] === m).forEach(p => set.add(p.id));
+  };
+  pick(ps.filter(p => p.price != null), 'price', -1, out.price);
+  for (const u of ['kg', 'litro']) pick(ps.filter(p => p.unitPrice != null && p.unit === u), 'unitPrice', -1, out.unit);
+  pick(ps.filter(p => p.rating > 0), 'rating', 1, out.rating);
+  return out;
+}
+function compareList() {
+  const ps = [...cmpSel].map(id => items.find(i => i.id === id)).filter(Boolean);
+  const nul = (v, dir) => v == null ? Infinity : dir * v;
+  if (cmpSort === 'price') ps.sort((a, b) => nul(a.price, 1) - nul(b.price, 1));
+  if (cmpSort === 'unit') ps.sort((a, b) => nul(a.unitPrice, 1) - nul(b.unitPrice, 1));
+  if (cmpSort === 'rating') ps.sort((a, b) => (b.rating || 0) - (a.rating || 0));
+  return ps;
+}
+function renderCompare() {
+  const ps = compareList(), best = bestSets(ps);
+  $('cmp-sort').innerHTML = SORTS.map(([k, l]) => `<button type="button" class="pill ${k === cmpSort ? 'on' : ''}" data-k="${k}">${l}</button>`).join('');
+  const who = set => ps.filter(p => set.has(p.id)).map(p => `${pname(p)} en ${p.store}`).join(' y ');
+  const lines = [];
+  if (best.price.size) lines.push(`Más barato: ${who(best.price)}`);
+  if (best.unit.size) lines.push(`Mejor precio por kg o litro: ${who(best.unit)}`);
+  if (best.rating.size) lines.push(`Mejor puntuado: ${who(best.rating)}`);
+  $('cmp-sum').innerHTML = lines.map(l => `<p>${esc(l)}</p>`).join('');
+  $('cmp-sum').hidden = !lines.length;
+  const t = $('cmp-table'); t.style.setProperty('--n', ps.length);
+  const row = (label, fn) => `<div class="cl">${label}</div>` + ps.map(p => `<div class="c">${fn(p)}</div>`).join('');
+  const val = (txt, isBest) => txt ? `<b class="cv ${isBest ? 'best' : ''}">${txt}</b>` : '<span class="muted">—</span>';
+  t.innerHTML =
+    row('', p => { const im = imgOf(p); return `<span class="ph">${im ? `<img src="${esc(im)}" alt="">` : '<span class="noimg">Sin foto</span>'}</span><b class="cn">${esc(pname(p))}</b>`; }) +
+    row('Súper', p => esc(p.store)) +
+    row('Marca', p => p.brand ? esc(p.brand) : '<span class="muted">—</span>') +
+    row('Precio', p => val(p.price != null ? eur(p.price) : '', best.price.has(p.id))) +
+    row('Por kg o litro', p => val(p.unitPrice != null ? `${eur(p.unitPrice)}/${p.unit === 'litro' ? 'l' : p.unit}` : '', best.unit.has(p.id))) +
+    row('Mi puntuación', p => p.rating ? `<span class="stars ${best.rating.has(p.id) ? 'bestr' : ''}" aria-label="${p.rating} de 5">${stars(p.rating)}</span>` : '<span class="muted">—</span>') +
+    row('Mi nota', p => p.note ? `<span class="cnote">${esc(p.note)}</span>` : '<span class="muted">—</span>');
+}
+$('cmp-start').onclick = () => { cmpOn = true; cmpSel.clear(); cmpQ = ''; $('cmp-q').value = ''; filter = 'Todos'; render(); };
+$('cmp-cancel').onclick = () => { cmpOn = false; cmpSel.clear(); render(); };
+$('cmp-q').oninput = e => { cmpQ = e.target.value; render(); };
+$('cmp-go').onclick = () => { renderCompare(); $('cmp-dlg').showModal(); };
+$('cmp-close').onclick = () => $('cmp-dlg').close();
+$('cmp-sort').onclick = e => { const b = e.target.closest('.pill'); if (b) { cmpSort = b.dataset.k; renderCompare(); } };
+
+
+// --- localizar supermercado ---
+$('map-btn').onclick = () => {
+  const store = filter, base = 'https://www.google.com/maps/search/';
+  const plain = `${base}?api=1&query=${encodeURIComponent(store + ' supermercado')}`;
+  // se abre la pestaña ya, dentro del toque, para que el navegador no la bloquee
+  const w = window.open('', '_blank');
+  const go = url => { if (w) w.location.href = url; else location.href = url; };
+  if (!navigator.geolocation) return go(plain);
+  const btn = $('map-btn'), txt = btn.textContent;
+  btn.disabled = true; btn.textContent = 'Localizando…';
+  navigator.geolocation.getCurrentPosition(
+    pos => {
+      btn.disabled = false; btn.textContent = txt;
+      const { latitude: la, longitude: lo } = pos.coords;
+      go(`${base}${encodeURIComponent(store + ' supermercado')}/@${la.toFixed(5)},${lo.toFixed(5)},15z`);
+    },
+    () => { btn.disabled = false; btn.textContent = txt; go(plain); },
+    { timeout: 8000, maximumAge: 300000 });
+};
+
 // --- events ---
 $('add').onclick = () => openForm(null, view === 'want' ? 'want' : 'tried');
 $('f-cancel').onclick = () => $('form-dlg').close();
@@ -482,8 +571,14 @@ $('d-del').onclick = async () => {
   await remove(editing.id); items = await loadAll(); $('detail').close(); render();
 };
 $('chips').onclick = e => { const b = e.target.closest('.tab'); if (b) { filter = b.dataset.s; render(); } };
-$('grid').onclick = e => { const c = e.target.closest('.card'); if (c) openDetail(c.dataset.id); };
-for (const d of ['detail', 'form-dlg'])
+$('grid').onclick = e => {
+  const c = e.target.closest('.card'); if (!c) return;
+  if (!cmpOn) return openDetail(c.dataset.id);
+  const id = c.dataset.id;
+  if (cmpSel.has(id)) cmpSel.delete(id); else if (cmpSel.size < 6) cmpSel.add(id);
+  render();
+};
+for (const d of ['detail', 'form-dlg', 'cmp-dlg'])
   $(d).addEventListener('click', e => { if (e.target === $(d)) $(d).close(); });
 
 document.fonts && document.fonts.ready.then(() => { segIdx = -1; tabPrev = null; placeSeg(); placeTabInk(); });

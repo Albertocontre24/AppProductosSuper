@@ -9,14 +9,15 @@
 <link rel="icon" href="icon.svg">
 <link rel="apple-touch-icon" href="icon.svg">
 <link rel="preload" href="fonts/BarlowCondensed-800.woff2" as="font" type="font/woff2" crossorigin>
-<link rel="stylesheet" href="style.css?v=12">
+<link rel="stylesheet" href="style.css?v=14">
 </head>
 <body>
 <header>
   <div class="top"><span class="brand">Mi súper</span><button id="account" class="ghost small" hidden></button></div>
   <h1 id="title">Mis productos</h1>
-  <p id="count" class="count"></p>
+  <div class="meta"><p id="count" class="count"></p><div class="meta-btns"><button id="map-btn" class="ghost small" type="button" hidden>📍 Cerca de mí</button><button id="cmp-start" class="ghost small" type="button" hidden>Comparar</button></div></div>
   <div class="seg" role="group" aria-label="Lista"><span id="seg-thumb" class="seg-thumb" aria-hidden="true"></span><button data-v="tried">Me gustaron</button><button data-v="want">Quiero probar</button><button data-v="tier">Tierlist</button></div>
+  <input id="cmp-q" class="cmp-q" type="search" placeholder="Buscar: pizza, yogur, marca…" hidden>
   <nav id="chips" class="tabs" aria-label="Supermercados"></nav>
 </header>
 
@@ -38,7 +39,18 @@
   <p class="credit">Sugerencias con datos de Open Food Facts (licencia ODbL). Pueden estar incompletas.</p>
 </section>
 
+<div id="cmp-bar" class="cmp-bar" hidden><span id="cmp-n"></span><button id="cmp-cancel" class="ghost" type="button">Cancelar</button><button id="cmp-go" type="button" disabled>Comparar</button></div>
+
 <button id="add" class="fab" aria-label="Añadir producto"><svg viewBox="0 0 24 24" width="30" height="30" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M12 4v16M4 12h16"/></svg></button>
+
+<dialog id="cmp-dlg">
+  <div class="body">
+    <div class="cmp-head"><h2>Comparador</h2><button id="cmp-close" class="x2" type="button" aria-label="Cerrar">✕</button></div>
+    <div id="cmp-sum" class="cmp-sum"></div>
+    <div id="cmp-sort" class="cmp-sort"></div>
+    <div id="cmp-table" class="cmp-table"></div>
+  </div>
+</dialog>
 
 <dialog id="auth-dlg">
   <div class="body">
@@ -116,6 +128,6 @@
 </dialog>
 
 <script src="firebase-config.js"></script>
-<script src="app.js?v=11"></script>
+<script src="app.js?v=14"></script>
 </body>
 </html>
