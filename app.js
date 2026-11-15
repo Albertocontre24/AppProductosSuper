@@ -2,6 +2,7 @@
 const $ = id => document.getElementById(id);
 const DEFAULT_STORES = ['Lidl', 'Mercadona', 'Carrefour', 'Dia', 'Aldi', 'Alcampo'];
 let items = [], filter = 'Todos', editing = null, photoData = null, score = null, view = 'tried', formStatus = 'tried', selTier = null, cmpOn = false, cmpSel = new Set(), cmpQ = '', cmpSort = 'none', viewer = null, shareCfg = null, tagFilter = null, lastList = [], tagMode = false, flashMsg = '';
+let formId = null, formSaving = false;
 let sortKey = (() => { try { return localStorage.getItem('sortKey') || 'new'; } catch { return 'new'; } })();
 
 // --- IndexedDB ---
@@ -28,7 +29,13 @@ let cloud = null; // { auth, db, user }
 const useCloud = () => !!(cloud && cloud.user);
 const col = () => cloud.db.collection('users').doc(cloud.user.uid).collection('products');
 const loadAll = async () => useCloud() ? (await col().get()).docs.map(d => d.data()) : localAll();
-const save = async o => { if (useCloud()) { await col().doc(o.id).set(o); mirrorSet(o); } else await localSave(o); };
+const save = async o => {
+  if (useCloud()) {
+    const w = col().doc(o.id).set(o); w.catch(() => {});
+    await Promise.race([w, new Promise(r => setTimeout(r, 2500))]);
+    mirrorSet(o);
+  } else await localSave(o);
+};
 const remove = async id => { if (useCloud()) { await col().doc(id).delete(); mirrorDel(id); } else await localRemove(id); };
 
 function loadScript(src) {
@@ -457,6 +464,7 @@ function setFormStatus(st) {
 }
 function openForm(i, status) {
   editing = i || null; photoData = i ? i.photo : null;
+  formId = i?.id || crypto.randomUUID();
   setScore(i && !isWant(i) ? scoreOf(i) : null);
   setFormStatus(status || i?.status || 'tried');
   $('f-store').value = i ? (i.store === NO_STORE ? '' : i.store) : (filter !== 'Todos' && filter !== NO_STORE ? filter : '');
@@ -494,22 +502,35 @@ $('f-btn-cam').onclick = () => $('f-cam').click();
 $('f-btn-gal').onclick = () => $('f-photo').click();
 $('form').onsubmit = async e => {
   e.preventDefault();
-  const num = v => v === '' ? null : Number(v);
-  const want = formStatus === 'want';
-  const o = {
-    id: editing?.id || crypto.randomUUID(), created: editing?.created || Date.now(), status: formStatus,
-    photo: photoData, photoUrl: editing?.photoUrl || null, cat: editing?.cat, tier: editing?.tier ?? null,
-    store: $('f-store').value.trim() || NO_STORE, brand: $('f-brand').value.trim(),
-    name: $('f-name').value.trim(), tag: canonTag($('f-tag').value), price: num($('f-price').value),
-    unitPrice: num($('f-unitprice').value), unit: $('f-unit').value, note: $('f-note').value.trim(),
-    score: want ? null : score,
-  };
-  if (o.cat === undefined) delete o.cat;
-  o.history = historyWith(editing, o.price, o.unitPrice);
-  await save(o);
-  items = await loadAll();
-  filter = o.store; view = formStatus;
-  $('form-dlg').close(); render();
+  if (formSaving) return;               // evita el doble toque: un guardado a la vez
+  formSaving = true;
+  const btn = $('f-save'), txt = btn.textContent;
+  btn.disabled = true; btn.textContent = 'Guardando…';
+  try {
+    const num = v => v === '' ? null : Number(v);
+    const want = formStatus === 'want';
+    const o = {
+      id: formId, created: editing?.created || Date.now(), status: formStatus,
+      photo: photoData, photoUrl: editing?.photoUrl || null, cat: editing?.cat, tier: editing?.tier ?? null,
+      src: editing?.src,
+      store: $('f-store').value.trim() || NO_STORE, brand: $('f-brand').value.trim(),
+      name: $('f-name').value.trim(), tag: canonTag($('f-tag').value), price: num($('f-price').value),
+      unitPrice: num($('f-unitprice').value), unit: $('f-unit').value, note: $('f-note').value.trim(),
+      score: want ? null : score,
+    };
+    if (o.cat === undefined) delete o.cat;
+    if (o.src === undefined) delete o.src;
+    o.history = historyWith(editing, o.price, o.unitPrice);
+    await save(o);
+    const k = items.findIndex(x => x.id === o.id);
+    if (k >= 0) items[k] = o; else items.unshift(o);
+    filter = o.store; view = formStatus;
+    $('form-dlg').close(); render();
+  } catch (err) {
+    alert('No se pudo guardar. Comprueba la conexión e inténtalo de nuevo.');
+  } finally {
+    formSaving = false; btn.disabled = false; btn.textContent = txt;
+  }
 };
 
 // --- sugerencias (Open Food Facts) ---
@@ -626,16 +647,21 @@ function paintSug() {
     </div>`).join('');
 }
 $('sug-refresh').onclick = () => loadSuggestions(true);
+const sugAdding = new Set();
 $('sug-list').onclick = async e => {
   const b = e.target.closest('[data-code]'); if (!b) return;
   const s = sugState.list.find(x => x.code === b.dataset.code); if (!s) return;
   const known = stores().find(x => norm(x) === norm(s.store));
   const store = filter !== 'Todos' ? filter : known || (s.store ? s.store[0].toUpperCase() + s.store.slice(1) : 'Sin súper');
-  b.disabled = true;
-  await save({ id: crypto.randomUUID(), created: Date.now(), status: 'want', photo: null, photoUrl: s.img,
-    store, brand: s.brand, name: s.name, price: null, unitPrice: null, unit: 'kg', score: null,
-    note: `Parecido a ${s.from}` });
-  items = await loadAll(); render();
+  if (sugAdding.has(s.code) || items.some(x => x.src === s.code)) return;
+  sugAdding.add(s.code); b.disabled = true;
+  try {
+    const o = { id: crypto.randomUUID(), created: Date.now(), status: 'want', photo: null, photoUrl: s.img, src: s.code,
+      store, brand: s.brand, name: s.name, price: null, unitPrice: null, unit: 'kg', score: null,
+      note: `Parecido a ${s.from}` };
+    await save(o); items.unshift(o); render();
+  } catch { b.disabled = false; alert('No se pudo añadir. Inténtalo de nuevo.'); }
+  finally { sugAdding.delete(s.code); }
 };
 
 
